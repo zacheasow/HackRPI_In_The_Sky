@@ -1,431 +1,527 @@
-/**
- * Paper folding animation. A CSS 3D rig of paper panels is folded into the
- * current airplane shape by an anime.js v4 timeline.
- *
- * The timeline only ever drives plain numbers in `fold`; render() turns those
- * numbers into panel transforms, so seeking the scrubber lands on exactly the
- * pose playback would have reached.
- *
- * Panel layout, in design units, with the paper lying in the XY plane and the
- * nose at -Y:
- *   left half  x [-halfSpan, 0], hinged on the spine at x = 0
- *   right half x [0, halfSpan], hinged on the spine at x = 0
- *   two triangular nose flaps per half, hinged on diagonal creases
- *   a keel below the spine, opened out of the body as the wings come down
- */
+// Paper folding. Each crease is a wrapper; the panels it folds are its children,
+// so a turn carries everything stacked on that crease. Shapes come from the
+// sliders and the editor. Anime.js v4 only animates the hinge angles.
 
 import { createTimeline } from "/vendor/animejs/bundles/anime.esm.js";
-import { SHAPE_LIMITS } from "./plane.js";
+import { SHAPE_LIMITS, defaultShape } from "./plane.js";
 
-const FALLBACK_SHAPE = {
-  span: 0.36,
-  rootChord: 0.07,
-  tipChord: 0.04,
-  sweepDeg: 5,
-  tailArea: 0.006,
-  noseWeight: 1,
-};
+const MOVE = 700;
+const GAP = 180;
+const HOLD = 280;
+const WING_LEFT = -26;
+const WING_RIGHT = 154;
+const KEEL_LEFT = -70;
+const KEEL_RIGHT = 70;
+const PITCH = 0;
+const KEEL_WIDTH = 26;
 
-// One fixed three-quarter view for the whole fold.
-const CAMERA = { tilt: -56, spin: -16 };
-
-// Timeline beats, in ms. The caption follows these.
-const STEPS = [
-  { at: 0, label: "Flat sheet" },
-  { at: 560, label: "Center crease" },
-  { at: 1950, label: "Top corners to the center line" },
-  { at: 2800, label: "New edges to the center again" },
-  { at: 3650, label: "Fold in half along the spine" },
-  { at: 4450, label: "Wings down" },
+const STEP_NAMES = [
+  "Flat sheet",
+  "Center crease",
+  "Top corners to the center line",
+  "New edges to the center again",
+  "Fold in half along the spine",
+  "Wings down",
 ];
-const TOTAL = 5350;
 
-function clamp(value, [min, max], fallback) {
+function clamp(value, limits, fallback) {
   const n = Number(value);
   if (!Number.isFinite(n)) return fallback;
-  return Math.min(max, Math.max(min, n));
+  return Math.min(limits[1], Math.max(limits[0], n));
 }
 
-function norm(value, [min, max]) {
-  if (max === min) return 0;
-  return Math.min(1, Math.max(0, (value - min) / (max - min)));
+function normalize(raw) {
+  const base = defaultShape();
+  const source = raw && typeof raw === "object" ? raw : {};
+  return {
+    span: clamp(source.span, SHAPE_LIMITS.span, base.span),
+    rootChord: clamp(source.rootChord, SHAPE_LIMITS.rootChord, base.rootChord),
+    tipChord: clamp(source.tipChord, SHAPE_LIMITS.tipChord, base.tipChord),
+    sweepDeg: clamp(source.sweepDeg, SHAPE_LIMITS.sweepDeg, base.sweepDeg),
+  };
 }
 
-const percent = (n) => `${n.toFixed(2)}%`;
-const polygonOf = (points) => `polygon(${points.map(([x, y]) => `${percent(x)} ${percent(y)}`).join(", ")})`;
-
-function axis(dx, dy) {
-  const length = Math.hypot(dx, dy) || 1;
-  return { x: dx / length, y: dy / length };
+function shapeKey(shape) {
+  const next = normalize(shape);
+  return `${next.span.toFixed(4)}|${next.rootChord.toFixed(4)}|${next.tipChord.toFixed(4)}|${next.sweepDeg.toFixed(2)}`;
 }
 
-function setBox(el, x, y, width, height) {
-  el.style.left = `${x}px`;
-  el.style.top = `${y}px`;
-  el.style.width = `${width}px`;
-  el.style.height = `${height}px`;
+function sheetOf(shape) {
+  const next = normalize(shape);
+  const spanT = (next.span - SHAPE_LIMITS.span[0]) / (SHAPE_LIMITS.span[1] - SHAPE_LIMITS.span[0]);
+  const rootT = (next.rootChord - SHAPE_LIMITS.rootChord[0]) / (SHAPE_LIMITS.rootChord[1] - SHAPE_LIMITS.rootChord[0]);
+  const half = 84 + spanT * 32;
+  const shear = (next.sweepDeg / SHAPE_LIMITS.sweepDeg[1]) * 0.38;
+  const y1 = half;
+  const y2 = half * Math.tan((67.5 * Math.PI) / 180);
+  const wingRoot = 64 + rootT * 56;
+  const tipRatio = next.tipChord / next.rootChord;
+  const deform = (x, y) => ({ x, y: y + shear * x });
+  const top = deform(half, 0);
+  const c1 = deform(half, y1);
+  const c2 = deform(half, y2);
+  const tip = deform(half, y2 + wingRoot * tipRatio);
+  const root = deform(0, y2 + wingRoot);
+  const tail = Math.max(top.y, c1.y, c2.y, tip.y, root.y);
+  return { half, shear, top, c1, c2, tip, root, tail, keel: Math.min(KEEL_WIDTH, half * 0.28) };
 }
 
-function setClip(piece, clip) {
-  piece.front.style.clipPath = clip;
-  piece.back.style.clipPath = clip;
-}
-
-function createPiece(parent, className) {
+function node(className) {
   const el = document.createElement("div");
-  el.className = `fold-piece ${className}`;
-  const front = document.createElement("div");
-  front.className = "fold-face fold-face-front";
-  const back = document.createElement("div");
-  back.className = "fold-face fold-face-back";
-  el.append(front, back);
-  parent.append(el);
-  return { el, front, back };
+  el.className = className;
+  return el;
 }
 
-/**
- * Shape values -> paper dimensions. Span sets the wings, the root chord sets
- * the paper length, the chord ratio sets the taper, sweep tips the leading
- * edge back, and the nose weight adds dihedral (a heavier nose wants more
- * wing-down angle).
- */
-function measureShape(shape) {
-  const span = clamp(shape.span, SHAPE_LIMITS.span, FALLBACK_SHAPE.span);
-  const rootChord = clamp(shape.rootChord, SHAPE_LIMITS.rootChord, FALLBACK_SHAPE.rootChord);
-  const tipChord = clamp(shape.tipChord, SHAPE_LIMITS.tipChord, FALLBACK_SHAPE.tipChord);
-  const sweepDeg = clamp(shape.sweepDeg, SHAPE_LIMITS.sweepDeg, FALLBACK_SHAPE.sweepDeg);
-  const noseWeight = clamp(shape.noseWeight, SHAPE_LIMITS.noseWeight, FALLBACK_SHAPE.noseWeight);
+function polyArea(points) {
+  let sum = 0;
+  for (let i = 0; i < points.length; i += 1) {
+    const a = points[i];
+    const b = points[(i + 1) % points.length];
+    sum += a.x * b.y - b.x * a.y;
+  }
+  return Math.abs(sum) / 2;
+}
 
-  const spanNorm = norm(span, SHAPE_LIMITS.span);
-  const chordNorm = norm(rootChord, SHAPE_LIMITS.rootChord);
-  const noseNorm = norm(noseWeight, SHAPE_LIMITS.noseWeight);
+function clipX(points, limit, keepGreater) {
+  const inside = (p) => (keepGreater ? p.x >= limit - 1e-6 : p.x <= limit + 1e-6);
+  const cross = (a, b) => {
+    const t = (limit - a.x) / (b.x - a.x || 1e-9);
+    return { x: limit, y: a.y + (b.y - a.y) * t };
+  };
+  const out = [];
+  for (let i = 0; i < points.length; i += 1) {
+    const a = points[i];
+    const b = points[(i + 1) % points.length];
+    const ain = inside(a);
+    const bin = inside(b);
+    if (ain && bin) out.push(b);
+    else if (ain && !bin) out.push(cross(a, b));
+    else if (!ain && bin) {
+      out.push(cross(a, b));
+      out.push(b);
+    }
+  }
+  return out;
+}
 
-  const halfSpan = 92 + 56 * spanNorm; // half the paper width
-  const length = 282 + 66 * chordNorm; // root chord, nose to trailing edge
-  const taper = Math.min(1, Math.max(0.18, tipChord / Math.max(rootChord, 1e-6)));
-  const tipChordPx = length * taper; // root chord is the whole paper length
-  // Leading edge at the tip: quarter-chord sweep plus the taper's own offset.
-  const sweepPx = Math.min(
-    Math.max(0.25 * (length - tipChordPx) + Math.tan((sweepDeg * Math.PI) / 180) * halfSpan, 0),
-    Math.max(0, length * 0.9 - tipChordPx)
-  );
+function toLocal(angleDeg, point) {
+  const r = (-angleDeg * Math.PI) / 180;
+  const c = Math.cos(r);
+  const s = Math.sin(r);
+  return { x: point.x * c - point.y * s, y: point.x * s + point.y * c };
+}
 
-  // The first nose fold is the classic 45 degree crease, so the corner lands
-  // on the center line. The second crease is steeper and clips the new edge.
-  const h1 = Math.min(halfSpan, length * 0.82);
-  const h2 = Math.min(h1 * 1.85, length * 0.92);
+function addPaper(parent, points, lift) {
+  if (points.length < 3 || polyArea(points) < 4) return;
+  const xs = points.map((p) => p.x);
+  const ys = points.map((p) => p.y);
+  const minX = Math.min(...xs);
+  const minY = Math.min(...ys);
+  const width = Math.max(1, Math.max(...xs) - minX);
+  const height = Math.max(1, Math.max(...ys) - minY);
+  const clip = `polygon(${points.map((p) => `${(p.x - minX).toFixed(2)}px ${(p.y - minY).toFixed(2)}px`).join(",")})`;
+  for (const side of ["front", "back"]) {
+    const face = node(`paper ${side}`);
+    face.style.left = `${minX}px`;
+    face.style.top = `${minY}px`;
+    face.style.width = `${width}px`;
+    face.style.height = `${height}px`;
+    face.style.clipPath = clip;
+    face.style.transform = side === "front" ? `translateZ(${lift}px)` : `rotateY(180deg) translateZ(${lift}px)`;
+    parent.append(face);
+  }
+}
+
+function addCrease(parent, axis, length, at) {
+  const line = node(axis === "x" ? "crease along-x" : "crease along-y");
+  if (axis === "x") {
+    line.style.left = "0px";
+    line.style.top = `${at}px`;
+    line.style.width = `${Math.max(1, length)}px`;
+  } else {
+    line.style.left = `${at}px`;
+    line.style.top = "0px";
+    line.style.height = `${Math.max(1, length)}px`;
+  }
+  parent.append(line);
+}
+
+function buildHalf(sheet) {
+  const { half, top, c1, c2, tip, root, tail, keel } = sheet;
+  const cornerAngle = (Math.atan2(c1.y, c1.x) * 180) / Math.PI;
+  const edgeAngle = (Math.atan2(c2.y, c2.x) * 180) / Math.PI;
+  const wing = [ { x: 0, y: 0 }, c2, tip, root ];
+  const keelPoly = clipX(wing, keel, false);
+  const wingPoly = clipX(wing, keel, true).map((p) => ({ x: p.x - keel, y: p.y }));
+
+  const spine = node("d3 hinge spine");
+  spine.style.transformOrigin = "0px 0px";
+  spine.style.height = `${tail}px`;
+
+  const keelHinge = node("d3 hinge keel");
+  keelHinge.style.width = `${keel}px`;
+  keelHinge.style.height = `${tail}px`;
+  keelHinge.style.transformOrigin = `${keel}px 0px`;
+  addPaper(keelHinge, keelPoly, 1.5);
+  addCrease(keelHinge, "y", tail, keel);
+
+  const edgeLift = node("d3");
+  edgeLift.style.transform = "translateZ(2px)";
+  const edgeMount = node("d3 mount");
+  edgeMount.style.transform = `rotateZ(${edgeAngle}deg)`;
+  edgeMount.style.transformOrigin = "0px 0px";
+  const edgeHinge = node("d3 hinge edge");
+  edgeHinge.style.transformOrigin = "0px 0px";
+  const edgeLocal = [ { x: 0, y: 0 }, c1, c2 ].map((p) => toLocal(edgeAngle, p));
+  addPaper(edgeHinge, edgeLocal, 1.5);
+  addCrease(edgeHinge, "x", Math.hypot(c2.x, c2.y), 0);
+
+  const cornerLift = node("d3");
+  cornerLift.style.transform = "translateZ(2px)";
+  const cornerMount = node("d3 mount");
+  cornerMount.style.transform = `rotateZ(${cornerAngle - edgeAngle}deg)`;
+  cornerMount.style.transformOrigin = "0px 0px";
+  const cornerHinge = node("d3 hinge corner");
+  cornerHinge.style.transformOrigin = "0px 0px";
+  const cornerLocal = [ { x: 0, y: 0 }, top, c1 ].map((p) => toLocal(cornerAngle, p));
+  addPaper(cornerHinge, cornerLocal, 1.5);
+  addCrease(cornerHinge, "x", Math.hypot(c1.x, c1.y), 0);
+  cornerMount.append(cornerHinge);
+  cornerLift.append(cornerMount);
+  edgeHinge.append(cornerLift);
+  edgeMount.append(edgeHinge);
+  edgeLift.append(edgeMount);
+  keelHinge.append(edgeLift);
+
+  const wingHinge = node("d3 hinge wing");
+  wingHinge.style.left = `${keel}px`;
+  wingHinge.style.width = `${Math.max(1, half - keel)}px`;
+  wingHinge.style.height = `${tail}px`;
+  wingHinge.style.transformOrigin = "0px 0px";
+  const wingLift = node("d3");
+  wingLift.style.transform = "translateZ(2px)";
+  addPaper(wingLift, wingPoly, 1.5);
+  const wingTop = Math.min(...wingPoly.map((p) => p.y));
+  const wingBottom = Math.max(...wingPoly.map((p) => p.y));
+  addCrease(wingLift, "y", wingBottom - wingTop, 0);
+  const crease = wingLift.querySelector(".crease");
+  if (crease) crease.style.top = `${wingTop}px`;
+  wingHinge.append(wingLift);
+
+  spine.append(keelHinge, wingHinge);
+  return spine;
+}
+
+function buildModel(stage, shape) {
+  const sheet = sheetOf(shape);
+  const shift = node("fold-shift");
+  const camera = node("fold-camera");
+  const model = node("fold-model");
+  const hover = node("fold-hover");
+
+  const pitch = node("d3 fold-pitch");
+  pitch.style.transformOrigin = "0px 0px";
+  const shadowSlot = node("fold-shadow-slot");
+  const shadow = node("fold-shadow");
+  const shadowW = sheet.half * 2.3;
+  const shadowH = Math.max(36, sheet.tail * 0.22);
+  shadow.style.width = `${shadowW}px`;
+  shadow.style.height = `${shadowH}px`;
+  shadow.style.marginLeft = `${-shadowW / 2}px`;
+  shadow.style.marginTop = `${-shadowH / 2}px`;
+  shadowSlot.append(shadow);
+
+  const left = node("d3 mirror");
+  left.style.top = `${-sheet.tail / 2}px`;
+  left.style.transform = "scaleX(-1) translateZ(0px)";
+  left.style.transformOrigin = "0px 0px";
+  const leftHalf = buildHalf(sheet);
+  leftHalf.classList.add("left");
+  left.append(leftHalf);
+
+  const right = node("d3");
+  right.style.top = `${-sheet.tail / 2}px`;
+  right.style.transform = "translateZ(-2px)";
+  const rightHalf = buildHalf(sheet);
+  rightHalf.classList.add("right");
+  right.append(rightHalf);
+
+  pitch.append(left, right);
+  hover.append(pitch);
+  model.append(shadowSlot, hover);
+  camera.append(model);
+  shift.append(camera);
+  stage.replaceChildren(shift);
 
   return {
-    halfSpan,
-    length,
-    h1,
-    h2,
-    h1Pct: (h1 / length) * 100,
-    h2Pct: (h2 / length) * 100,
-    sweepPct: (sweepPx / length) * 100,
-    tePct: ((sweepPx + tipChordPx) / length) * 100,
-    dihedral: 10 + 4 * spanNorm + 2 * noseNorm,
-    keelDepth: Math.max(22, length * 0.1),
-    axisL1: axis(-halfSpan, h1),
-    axisL2: axis(-halfSpan, h2),
-    axisR1: axis(halfSpan, h1),
-    axisR2: axis(halfSpan, h2),
+    shift,
+    hover,
+    pitch,
+    shadow,
+    spine: rightHalf,
+    corners: stage.querySelectorAll(".corner"),
+    edges: stage.querySelectorAll(".edge"),
+    wingL: leftHalf.querySelector(".wing"),
+    wingR: rightHalf.querySelector(".wing"),
+    keelL: leftHalf.querySelector(".keel"),
+    keelR: rightHalf.querySelector(".keel"),
   };
 }
 
-export function initFold(container, getShape) {
-  if (!container) return null;
-  const stage = container.querySelector(".fold-stage");
-  const playButton = container.querySelector('[data-fold="play"]');
-  const replayButton = container.querySelector('[data-fold="replay"]');
-  const scrub = container.querySelector('[data-fold="scrub"]');
-  const caption = container.querySelector(".fold-caption");
-  if (!stage) return null;
+function poses() {
+  const flat = { spine: 0, corner: 0, edge: 0, wingL: 0, wingR: 0, keelL: 0, keelR: 0, pitch: 0 };
+  const folded = { ...flat, spine: -180, corner: -180, edge: -180 };
+  return [
+    flat,
+    { ...flat, spine: -90 },
+    { ...flat, spine: -180 },
+    { ...flat, corner: -90 },
+    { ...flat, corner: -180 },
+    { ...flat, corner: -180, edge: -90 },
+    { ...flat, corner: -180, edge: -180 },
+    { ...flat, spine: -90, corner: -180, edge: -180 },
+    folded,
+    { ...folded, pitch: PITCH / 2, wingL: WING_LEFT / 2, wingR: WING_RIGHT / 2, keelL: KEEL_LEFT / 2, keelR: KEEL_RIGHT / 2 },
+    { ...folded, pitch: PITCH, wingL: WING_LEFT, wingR: WING_RIGHT, keelL: KEEL_LEFT, keelR: KEEL_RIGHT },
+  ];
+}
 
-  const rig = document.createElement("div");
-  rig.className = "fold-rig";
-  const sheet = document.createElement("div");
-  sheet.className = "fold-sheet";
-  const shadow = document.createElement("div");
-  shadow.className = "fold-shadow";
-  sheet.append(shadow);
-  const keelRight = createPiece(sheet, "fold-keel fold-keel-right");
-  const keelLeft = createPiece(sheet, "fold-keel fold-keel-left");
-  rig.append(sheet);
-  stage.append(rig);
+function applyPose(rig, pose) {
+  rig.spine.style.transform = `rotateY(${pose.spine}deg)`;
+  for (const el of rig.corners) el.style.transform = `rotateX(${pose.corner}deg)`;
+  for (const el of rig.edges) el.style.transform = `rotateX(${pose.edge}deg)`;
+  rig.wingL.style.transform = `rotateY(${pose.wingL}deg)`;
+  rig.wingR.style.transform = `rotateY(${pose.wingR}deg)`;
+  rig.keelL.style.transform = `rotateY(${pose.keelL}deg)`;
+  rig.keelR.style.transform = `rotateY(${pose.keelR}deg)`;
+  rig.pitch.style.transform = `rotateX(${pose.pitch}deg)`;
+}
 
-  const right = createPiece(sheet, "fold-half fold-half-right");
-  const left = createPiece(sheet, "fold-half fold-half-left");
-  const flapR1 = createPiece(right.el, "fold-flap fold-flap-1");
-  const flapR2 = createPiece(right.el, "fold-flap fold-flap-2");
-  const flapL1 = createPiece(left.el, "fold-flap fold-flap-1");
-  const flapL2 = createPiece(left.el, "fold-flap fold-flap-2");
+function clearPose(rig) {
+  applyPose(rig, poses()[0]);
+  rig.spine.style.transform = "";
+  for (const el of rig.corners) el.style.transform = "";
+  for (const el of rig.edges) el.style.transform = "";
+  rig.wingL.style.transform = "";
+  rig.wingR.style.transform = "";
+  rig.keelL.style.transform = "";
+  rig.keelR.style.transform = "";
+  rig.pitch.style.transform = "";
+}
 
-  let geometry = measureShape(FALLBACK_SHAPE);
-  let scale = 1;
+function measure(stage) {
+  const panels = stage.querySelectorAll(".paper, .crease, .fold-shadow");
+  let minX = Infinity;
+  let minY = Infinity;
+  let maxX = -Infinity;
+  let maxY = -Infinity;
+  for (const el of panels) {
+    const rect = el.getBoundingClientRect();
+    if (rect.width === 0 && rect.height === 0) continue;
+    minX = Math.min(minX, rect.left);
+    minY = Math.min(minY, rect.top);
+    maxX = Math.max(maxX, rect.right);
+    maxY = Math.max(maxY, rect.bottom);
+  }
+  if (!Number.isFinite(minX)) return null;
+  return { minX, minY, maxX, maxY, w: maxX - minX, h: maxY - minY };
+}
+
+function fit(stage, rig) {
+  const pad = 36;
+  const bounds = stage.getBoundingClientRect();
+  rig.shift.style.transform = "scale(1) translate(0px, 0px)";
+  let minX = Infinity;
+  let minY = Infinity;
+  let maxX = -Infinity;
+  let maxY = -Infinity;
+  for (const pose of poses()) {
+    applyPose(rig, pose);
+    const box = measure(stage);
+    if (!box) continue;
+    minX = Math.min(minX, box.minX);
+    minY = Math.min(minY, box.minY);
+    maxX = Math.max(maxX, box.maxX);
+    maxY = Math.max(maxY, box.maxY);
+  }
+  clearPose(rig);
+  if (!Number.isFinite(minX)) return;
+  const originX = bounds.left + bounds.width / 2;
+  const originY = bounds.top + bounds.height * 0.48;
+  const dx = originX - (minX + maxX) / 2;
+  const dy = originY - (minY + maxY) / 2;
+  const scale = Math.max(0.25, Math.min((bounds.width - pad * 2) / (maxX - minX), (bounds.height - pad * 2) / (maxY - minY)));
+  rig.shift.style.transform = `scale(${scale}) translate(${dx}px, ${dy}px)`;
+
+  // Perspective makes the scale a little nonlinear, so measure once more and shrink if needed.
+  let overflow = 1;
+  for (const pose of poses()) {
+    applyPose(rig, pose);
+    const box = measure(stage);
+    if (!box) continue;
+    const fitW = (bounds.width - pad * 2) / box.w;
+    const fitH = (bounds.height - pad * 2) / box.h;
+    overflow = Math.min(overflow, fitW, fitH);
+  }
+  clearPose(rig);
+  if (overflow < 0.98) {
+    rig.shift.style.transform = `scale(${scale * overflow}) translate(${dx}px, ${dy}px)`;
+  }
+}
+
+function stepIndex(marks, time) {
+  let index = 0;
+  for (let i = 0; i < marks.length; i += 1) {
+    if (time + 1 >= marks[i]) index = i;
+  }
+  return index;
+}
+
+function initFold(container, getShape) {
+  const stage = container?.querySelector(".fold-stage");
+  const caption = container?.querySelector(".fold-caption");
+  const scrub = container?.querySelector("[data-fold='scrub']");
+  const play = container?.querySelector("[data-fold='play']");
+  const replay = container?.querySelector("[data-fold='replay']");
+  if (!stage || !caption || !scrub || !play || !replay) return;
+
   let timeline = null;
-  let playing = false;
-  let lastWing = -1;
-  let refoldTimer = 0;
+  let rig = null;
+  let marks = [0];
+  let key = "";
+  let wait = 0;
+  const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
-  // Every animated number lives here. Nothing else is tweened.
-  const fold = {
-    crease: 0,
-    cornerL: 0,
-    cornerR: 0,
-    edgeL: 0,
-    edgeR: 0,
-    spineL: 0,
-    spineR: 0,
-    wing: 0,
-    flaps: 1,
-    keel: 0,
-  };
-
-  function applyWing(t) {
-    const { sweepPct, tePct } = geometry;
-    const sweep = sweepPct * t;
-    const tail = 100 + (tePct - 100) * t;
-    setClip(left, polygonOf([[100, 0], [0, sweep], [0, tail], [100, 100]]));
-    setClip(right, polygonOf([[0, 0], [100, sweep], [100, tail], [0, 100]]));
-    lastWing = t;
+  function stopIdle() {
+    rig?.hover.classList.remove("idle");
+    rig?.shadow.classList.remove("idle");
   }
 
-  function applyGeometry() {
-    const { halfSpan, length, h1Pct, h2Pct } = geometry;
-    setBox(left.el, -halfSpan, -length / 2, halfSpan, length);
-    setBox(right.el, 0, -length / 2, halfSpan, length);
-    left.el.style.transformOrigin = "100% 50%";
-    right.el.style.transformOrigin = "0% 50%";
-
-    setBox(shadow, -halfSpan * 1.06, -length * 0.53, halfSpan * 2.12, length * 1.06);
-
-    // The keel is the folded body: two plates hinged on the spine, angled down
-    // and apart so it hangs below the wings. It stays at zero width (and so
-    // out of sight) until the body opens on the wings-down step.
-    const keelProfile = polygonOf([[0, 0], [100, 26], [100, 90], [0, 100]]);
-    for (const plate of [keelLeft, keelRight]) {
-      setBox(plate.el, 0, -length / 2, geometry.keelDepth, length);
-      plate.el.style.transformOrigin = "0% 50%";
-      setClip(plate, keelProfile);
-    }
-
-    rig.style.transform = `rotateX(${CAMERA.tilt}deg) rotateZ(${CAMERA.spin}deg)`;
-
-    flapL1.el.style.transformOrigin = "100% 0%";
-    flapL2.el.style.transformOrigin = "100% 0%";
-    flapR1.el.style.transformOrigin = "0% 0%";
-    flapR2.el.style.transformOrigin = "0% 0%";
-
-    setClip(flapL1, polygonOf([[100, 0], [0, 0], [0, h1Pct]]));
-    setClip(flapL2, polygonOf([[100, 0], [0, h1Pct], [0, h2Pct]]));
-    setClip(flapR1, polygonOf([[0, 0], [100, 0], [100, h1Pct]]));
-    setClip(flapR2, polygonOf([[0, 0], [100, h1Pct], [100, h2Pct]]));
-
-    lastWing = -1;
-    fitScale();
-    applyWing(fold.wing);
+  function startIdle() {
+    rig?.hover.classList.add("idle");
+    rig?.shadow.classList.add("idle");
   }
 
-  function fitScale() {
-    const rect = stage.getBoundingClientRect();
-    const width = Math.max(180, rect.width || 320);
-    const height = Math.max(180, rect.height || 320);
-    const { halfSpan, length, keelDepth } = geometry;
-    const tilt = Math.abs(Math.cos((CAMERA.tilt * Math.PI) / 180));
-    const byWidth = (width * 0.72) / (2 * halfSpan);
-    const byDepth = (height * 0.8) / (length * tilt + keelDepth);
-    scale = Math.max(0.4, Math.min(byWidth, byDepth));
+  function sync(time) {
+    scrub.value = String(Math.round(time));
+    caption.textContent = STEP_NAMES[stepIndex(marks, time)];
   }
 
-  function render() {
-    sheet.style.transform = `scale(${scale})`;
-
-    const spread = fold.keel.toFixed(4);
-    keelLeft.el.style.transform = `rotateY(125deg) scaleX(${spread})`;
-    keelRight.el.style.transform = `rotateY(55deg) scaleX(${spread})`;
-
-    // The center-crease press and the half fold share the same spine hinge.
-    left.el.style.transform = `translateZ(0.6px) rotateY(${fold.spineL + fold.crease}deg)`;
-    right.el.style.transform = `rotateY(${fold.spineR}deg)`;
-
-    const { axisL1, axisL2, axisR1, axisR2 } = geometry;
-    flapL1.el.style.transform = `translateZ(1.4px) rotate3d(${axisL1.x}, ${axisL1.y}, 0, ${fold.cornerL}deg)`;
-    flapL2.el.style.transform = `translateZ(2.8px) rotate3d(${axisL2.x}, ${axisL2.y}, 0, ${fold.edgeL}deg)`;
-    flapR1.el.style.transform = `translateZ(1.4px) rotate3d(${axisR1.x}, ${axisR1.y}, 0, ${fold.cornerR}deg)`;
-    flapR2.el.style.transform = `translateZ(2.8px) rotate3d(${axisR2.x}, ${axisR2.y}, 0, ${fold.edgeR}deg)`;
-
-    const fade = fold.flaps.toFixed(3);
-    for (const flap of [flapL1, flapL2, flapR1, flapR2]) {
-      flap.front.style.opacity = fade;
-      flap.back.style.opacity = fade;
-    }
-
-    if (fold.wing !== lastWing) applyWing(fold.wing);
-  }
-
-  function stepLabel(time) {
-    let label = STEPS[0].label;
-    for (const step of STEPS) if (time >= step.at) label = step.label;
-    return label;
-  }
-
-  function syncControls(time) {
-    if (scrub) scrub.value = String(Math.round(time));
-    if (caption) {
-      const label = stepLabel(time);
-      if (caption.textContent !== label) caption.textContent = label;
-    }
-  }
-
-  function setPlaying(next) {
-    playing = next;
-    if (playButton) playButton.textContent = next ? "Pause" : "Fold";
-  }
-
-  function onTick() {
-    render();
-    if (timeline) syncControls(timeline.currentTime);
-  }
-
-  function buildTimeline() {
+  function build(playFromStart) {
     if (timeline) timeline.pause();
-    Object.assign(fold, {
-      crease: 0,
-      cornerL: 0,
-      cornerR: 0,
-      edgeL: 0,
-      edgeR: 0,
-      spineL: 0,
-      spineR: 0,
-      wing: 0,
-      flaps: 1,
-    });
+    timeline = null;
+    stopIdle();
+    const shape = getShape();
+    key = shapeKey(shape);
+    rig = buildModel(stage, shape);
+    fit(stage, rig);
 
-    const dihedral = geometry.dihedral;
-    const next = createTimeline({
+    const tl = createTimeline({
       autoplay: false,
-      defaults: { duration: 600, ease: "inOutQuad" },
-      onUpdate: onTick,
-      onComplete: () => setPlaying(false),
+      defaults: { ease: "inOutCubic", duration: MOVE },
+      onUpdate(self) {
+        sync(self.currentTime);
+        if (self.currentTime < self.duration - 30) stopIdle();
+      },
+      onComplete() {
+        sync(tl.duration);
+        startIdle();
+      },
     });
 
-    // 1. Center crease: press the sheet in half, hold, then open it again.
-    next.add(
-      fold,
-      {
-        crease: [
-          { to: 180, duration: 620, ease: "inQuad" },
-          { to: 180, duration: 140 },
-          { to: 0, duration: 560, ease: "outQuad" },
-        ],
-      },
-      560
-    );
-    // 2. Top corners to the center line, then the new edges again.
-    next.add(fold, { cornerL: 180, duration: 640, ease: "inOutQuad" }, 1950);
-    next.add(fold, { cornerR: 180, duration: 640, ease: "inOutQuad" }, 2200);
-    next.add(fold, { edgeL: 180, duration: 640, ease: "inOutQuad" }, 2800);
-    next.add(fold, { edgeR: 180, duration: 640, ease: "inOutQuad" }, 3020);
-    // 3. Fold in half along the spine, then 4. open the body into the wings-down V.
-    next.add(
-      fold,
-      {
-        spineL: [
-          { to: 180, duration: 720, ease: "inOutQuad" },
-          { to: 180, duration: 80 },
-          { to: dihedral, duration: 900, ease: "outCubic" },
-        ],
-      },
-      3650
-    );
-    next.add(fold, { spineR: -dihedral, duration: 900, ease: "outCubic" }, 4450);
-    next.add(fold, { wing: 1, duration: 900, ease: "inOutQuad" }, 4450);
-    // The body opens into the keel below the wings.
-    next.add(fold, { keel: 1, duration: 900, ease: "outCubic" }, 4450);
-    // The nose folds end up inside the body once the wings come down.
-    next.add(fold, { flaps: 0, duration: 460, ease: "inQuad" }, 4450);
+    tl.set(rig.spine, { rotateY: 0 }, 0);
+    tl.set(rig.corners, { rotateX: 0 }, 0);
+    tl.set(rig.edges, { rotateX: 0 }, 0);
+    tl.set(rig.wingL, { rotateY: 0 }, 0);
+    tl.set(rig.wingR, { rotateY: 0 }, 0);
+    tl.set(rig.keelL, { rotateY: 0 }, 0);
+    tl.set(rig.keelR, { rotateY: 0 }, 0);
+    tl.set(rig.pitch, { rotateX: 0 }, 0);
+    tl.set(rig.shadow, { scale: 1 }, 0);
 
-    timeline = next;
-    if (scrub) scrub.max = String(Math.round(TOTAL));
-    // anime.js seek() resumes a running timer, so pause before the first seek.
-    timeline.pause();
-    timeline.seek(0, true);
-    render();
-    syncControls(0);
-  }
+    let t = HOLD;
+    const started = [0];
+    started.push(t);
+    tl.add(rig.spine, { rotateY: -180 }, t);
+    t += MOVE;
+    tl.add(rig.spine, { rotateY: 0 }, t);
+    t += MOVE + GAP;
 
-  function play() {
-    if (!timeline) return;
-    if (timeline.completed || timeline.currentTime >= TOTAL - 1) {
-      timeline.pause();
-      timeline.seek(0, true);
-      render();
+    started.push(t);
+    tl.add(rig.corners, { rotateX: -180 }, t);
+    t += MOVE + GAP;
+
+    started.push(t);
+    tl.add(rig.edges, { rotateX: -180 }, t);
+    t += MOVE + GAP;
+
+    started.push(t);
+    tl.add(rig.spine, { rotateY: -180 }, t);
+    t += MOVE + GAP;
+
+    started.push(t);
+    tl.add(rig.wingL, { rotateY: WING_LEFT }, t);
+    tl.add(rig.wingR, { rotateY: WING_RIGHT }, t);
+    tl.add(rig.keelL, { rotateY: KEEL_LEFT }, t);
+    tl.add(rig.keelR, { rotateY: KEEL_RIGHT }, t);
+    tl.add(rig.pitch, { rotateX: PITCH }, t);
+    tl.add(rig.shadow, { scale: 0.66 }, t);
+
+    marks = started;
+    timeline = tl;
+    scrub.max = String(Math.ceil(tl.duration));
+    tl.seek(0);
+    sync(0);
+
+    if (reduced) {
+      tl.seek(tl.duration);
+      sync(tl.duration);
+      return;
     }
-    timeline.play();
-    setPlaying(true);
+    if (playFromStart) tl.play();
   }
 
-  function replay() {
+  play.addEventListener("click", () => {
     if (!timeline) return;
+    stopIdle();
+    if (timeline.completed || timeline.currentTime >= timeline.duration - 1) timeline.restart();
+    else timeline.play();
+  });
+
+  replay.addEventListener("click", () => {
+    if (!timeline) return;
+    stopIdle();
+    timeline.restart();
+  });
+
+  scrub.addEventListener("input", () => {
+    if (!timeline) return;
+    stopIdle();
     timeline.pause();
-    timeline.seek(0, true);
-    render();
-    syncControls(0);
-    timeline.play();
-    setPlaying(true);
-  }
-
-  function update() {
-    geometry = measureShape(getShape() || FALLBACK_SHAPE);
-    applyGeometry();
-    buildTimeline();
-  }
-
-  function scheduleRefold() {
-    window.clearTimeout(refoldTimer);
-    refoldTimer = window.setTimeout(() => {
-      update();
-      replay();
-    }, 220);
-  }
-
-  if (playButton) {
-    playButton.addEventListener("click", () => {
-      if (playing) {
-        timeline?.pause();
-        setPlaying(false);
-      } else {
-        play();
-      }
-    });
-  }
-  if (replayButton) replayButton.addEventListener("click", replay);
-  if (scrub) {
-    scrub.addEventListener("input", () => {
-      if (!timeline) return;
-      timeline.pause();
-      setPlaying(false);
-      const time = Number(scrub.value);
-      timeline.seek(time, true);
-      render();
-      syncControls(time);
-    });
-  }
-
-  // Re-fold when a shape slider moves; the fold follows the new shape.
-  document.addEventListener("input", (event) => {
-    const target = event.target;
-    if (!(target instanceof HTMLElement) || !target.id.startsWith("shape-")) return;
-    scheduleRefold();
+    timeline.seek(Number(scrub.value));
+    sync(timeline.currentTime);
+    if (timeline.currentTime >= timeline.duration - 1) startIdle();
   });
 
   const observer = new ResizeObserver(() => {
-    fitScale();
-    render();
+    if (!rig || !timeline) return;
+    const time = timeline.currentTime;
+    const wasPlaying = !timeline.paused;
+    timeline.pause();
+    fit(stage, rig);
+    timeline.seek(time);
+    if (wasPlaying) timeline.play();
   });
   observer.observe(stage);
 
-  update();
-  return { play, replay, update };
+  window.setInterval(() => {
+    const next = shapeKey(getShape());
+    if (next === key) return;
+    window.clearTimeout(wait);
+    wait = window.setTimeout(() => build(true), 280);
+  }, 200);
+
+  build(false);
 }
+
+export { initFold };
