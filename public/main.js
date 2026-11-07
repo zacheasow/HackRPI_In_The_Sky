@@ -1,7 +1,8 @@
-import { CONFIG, resolveWind, simulate } from "./physics.js";
-import { SHAPE_LIMITS, defaultLaunch, defaultPlane, defaultShape, derivePlane } from "./plane.js";
-import { FlightView } from "./render.js";
+import { clampShape, initEditor } from "./editor.js";
 import { initFold } from "./fold.js";
+import { SHAPE_LIMITS, defaultLaunch, defaultPlane, defaultShape, derivePlane } from "./plane.js";
+import { CONFIG, resolveWind, simulate } from "./physics.js";
+import { FlightView } from "./render.js";
 
 const SHAPE_FIELDS = [
   { key: "span", label: "Wing span", unit: "cm", scale: 100, step: 0.5, digits: 1 },
@@ -14,6 +15,8 @@ const SHAPE_FIELDS = [
 
 const launchDefaults = defaultLaunch();
 const shapeDefaults = defaultShape();
+let shape = { ...shapeDefaults };
+let editor = null;
 
 const speedInput = document.querySelector("#speed");
 const angleInput = document.querySelector("#angle");
@@ -69,12 +72,14 @@ function applyWindDefaults() {
 }
 
 function readShape() {
-  const shape = {};
+  return shape;
+}
+
+function writeShape() {
   for (const field of SHAPE_FIELDS) {
     const input = document.querySelector(`#shape-${field.key}`);
-    shape[field.key] = Number(input.value) / field.scale;
+    input.value = String(shape[field.key] * field.scale);
   }
-  return shape;
 }
 
 function endLabel(reason) {
@@ -131,10 +136,12 @@ function clearStats() {
 }
 
 function refresh() {
+  writeShape();
   syncLabels();
   syncWind();
-  const plane = derivePlane(readShape());
+  const plane = derivePlane(shape);
   showReadouts(plane);
+  editor.redraw();
   if (!playing) view.showIdle(plane, readLaunch(), resolveWind(readWind()));
 }
 
@@ -164,7 +171,10 @@ function buildShapeSliders() {
     input.max = String(max * field.scale);
     input.step = String(field.step);
     input.value = String(shapeDefaults[field.key] * field.scale);
-    input.addEventListener("input", refresh);
+    input.addEventListener("input", () => {
+      shape = clampShape({ ...shape, [field.key]: Number(input.value) / field.scale });
+      refresh();
+    });
 
     label.append(heading, input);
     root.append(label);
@@ -186,12 +196,10 @@ document.querySelector("#launch").addEventListener("click", () => {
 
 document.querySelector("#reset").addEventListener("click", () => {
   playing = false;
+  shape = { ...defaultShape() };
   speedInput.value = String(launchDefaults.speed);
   angleInput.value = String(launchDefaults.angleDeg);
   applyWindDefaults();
-  for (const field of SHAPE_FIELDS) {
-    document.querySelector(`#shape-${field.key}`).value = String(shapeDefaults[field.key] * field.scale);
-  }
   clearStats();
   refresh();
 });
@@ -211,6 +219,10 @@ document.querySelector("#wind-new-seed").addEventListener("click", () => {
 
 buildShapeSliders();
 applyWindDefaults();
+editor = initEditor(document.querySelector("#editor"), readShape, (next) => {
+  shape = clampShape(next);
+  refresh();
+});
 refresh();
 view.resize();
 initFold(document.querySelector("#fold-panel"), readShape);

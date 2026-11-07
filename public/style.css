@@ -157,6 +157,17 @@ main {
   margin-top: 0;
 }
 
+.editor {
+  display: block;
+  width: 100%;
+  height: 230px;
+  margin-bottom: 12px;
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.45);
+  touch-action: none;
+  cursor: default;
+}
+
 .slider {
   display: block;
   margin-bottom: 10px;
