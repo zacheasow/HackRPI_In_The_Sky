@@ -1,3 +1,4 @@
+import { diagnose } from "./diagnosis.js";
 import { clampShape, initEditor } from "./editor.js";
 import { initFold } from "./fold.js";
 import { SHAPE_LIMITS, defaultLaunch, defaultPlane, defaultShape, derivePlane } from "./plane.js";
@@ -26,6 +27,10 @@ const distanceOut = document.querySelector("#distance");
 const timeOut = document.querySelector("#time");
 const heightOut = document.querySelector("#max-height");
 const statusOut = document.querySelector("#status");
+const headlineOut = document.querySelector("#diagnosis-headline");
+const detailsOut = document.querySelector("#diagnosis-details");
+const bestOut = document.querySelector("#best-flight");
+const historyOut = document.querySelector("#history");
 const readoutList = document.querySelector("#readouts");
 const canvas = document.querySelector("#flight");
 
@@ -128,11 +133,106 @@ function showReadouts(plane) {
   );
 }
 
+const HISTORY_KEY = "clouds.history";
+const BEST_KEY = "clouds.best";
+
+function readStore(key, fallback) {
+  try {
+    const raw = localStorage.getItem(key);
+    return raw ? JSON.parse(raw) : fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+function writeStore(key, value) {
+  try {
+    localStorage.setItem(key, JSON.stringify(value));
+  } catch {
+    // Private mode and a full disk both leave the in-memory list working.
+  }
+}
+
+let history = readStore(HISTORY_KEY, []);
+let best = readStore(BEST_KEY, null);
+if (!Array.isArray(history)) history = [];
+
+function windLabel(wind) {
+  const steady = Number(wind?.steady) || 0;
+  if (!wind || wind.mode === "off" || Math.abs(steady) < 0.05) return "calm";
+  const kind = steady > 0 ? "tail" : "head";
+  return `${Math.abs(steady).toFixed(1)} m/s ${kind}`;
+}
+
+function shapeLine(saved) {
+  return `${(saved.span * 100).toFixed(0)} cm span, ${(saved.rootChord * 100).toFixed(1)}/${(saved.tipChord * 100).toFixed(1)} cm chords, ${saved.sweepDeg.toFixed(0)}° sweep, ${(saved.tailArea * 10000).toFixed(0)} cm² tail, ${saved.noseWeight.toFixed(1)} g nose`;
+}
+
+function launchLine(saved) {
+  return `${saved.speed.toFixed(1)} m/s at ${saved.angleDeg.toFixed(0)}°`;
+}
+
+function showDiagnosis(note) {
+  headlineOut.textContent = note ? note.headline : "";
+  detailsOut.replaceChildren(
+    ...(note ? note.details : []).map((text) => {
+      const item = document.createElement("li");
+      item.textContent = text;
+      return item;
+    })
+  );
+}
+
+function showBest() {
+  if (!best) {
+    bestOut.textContent = "Best distance: no flights yet.";
+    return;
+  }
+  bestOut.textContent = `Best distance: ${best.distance.toFixed(2)} m. ${shapeLine(best.shape)}. Launch ${launchLine(best.launch)}.`;
+}
+
+function showHistory() {
+  historyOut.replaceChildren(
+    ...history.map((flight, index) => {
+      const item = document.createElement("li");
+      const text = document.createElement("p");
+      text.textContent = `${flight.distance.toFixed(2)} m · ${flight.flightTime.toFixed(2)} s · ${flight.windLabel} · ${flight.headline}`;
+      const load = document.createElement("button");
+      load.type = "button";
+      load.className = "ghost";
+      load.dataset.load = String(index);
+      load.textContent = "Load";
+      item.append(text, load);
+      return item;
+    })
+  );
+}
+
+function remember(result, note, savedShape, savedLaunch) {
+  history.unshift({
+    distance: result.distance,
+    flightTime: result.flightTime,
+    windLabel: windLabel(result.wind),
+    headline: note.headline,
+    shape: savedShape,
+    launch: savedLaunch,
+  });
+  history = history.slice(0, 10);
+  writeStore(HISTORY_KEY, history);
+  if (!best || result.distance > best.distance) {
+    best = { distance: result.distance, shape: savedShape, launch: savedLaunch };
+    writeStore(BEST_KEY, best);
+  }
+  showBest();
+  showHistory();
+}
+
 function clearStats() {
   distanceOut.textContent = "—";
   timeOut.textContent = "—";
   heightOut.textContent = "—";
   statusOut.textContent = "Set a throw, then launch.";
+  showDiagnosis(null);
 }
 
 function refresh() {
@@ -182,13 +282,18 @@ function buildShapeSliders() {
 }
 
 document.querySelector("#launch").addEventListener("click", () => {
-  const plane = derivePlane(readShape());
-  const result = simulate(plane, readLaunch(), readWind());
+  const savedShape = { ...readShape() };
+  const savedLaunch = readLaunch();
+  const plane = derivePlane(savedShape);
+  const result = simulate(plane, savedLaunch, readWind());
+  const note = diagnose(result, plane, savedLaunch);
   playing = true;
   distanceOut.textContent = `${result.distance.toFixed(2)} m`;
   timeOut.textContent = `${result.flightTime.toFixed(2)} s`;
   heightOut.textContent = `${result.maxHeight.toFixed(2)} m`;
   statusOut.textContent = endLabel(result.endReason);
+  showDiagnosis(note);
+  remember(result, note, savedShape, savedLaunch);
   view.play(result, (progress) => {
     if (progress >= 1) playing = false;
   });
@@ -211,6 +316,24 @@ document.querySelectorAll('input[name="wind-mode"]').forEach((input) => {
 });
 document.querySelector("#wind-fixed").addEventListener("input", refresh);
 document.querySelector("#wind-seed").addEventListener("input", refresh);
+historyOut.addEventListener("click", (event) => {
+  const button = event.target.closest("[data-load]");
+  if (!button) return;
+  const flight = history[Number(button.dataset.load)];
+  if (!flight) return;
+  playing = false;
+  shape = clampShape(flight.shape);
+  speedInput.value = String(flight.launch.speed);
+  angleInput.value = String(flight.launch.angleDeg);
+  refresh();
+});
+
+document.querySelector("#history-clear").addEventListener("click", () => {
+  history = [];
+  writeStore(HISTORY_KEY, history);
+  showHistory();
+});
+
 document.querySelector("#wind-new-seed").addEventListener("click", () => {
   const seed = Math.floor(Math.random() * 4294967296);
   document.querySelector("#wind-seed").value = String(seed);
@@ -224,5 +347,7 @@ editor = initEditor(document.querySelector("#editor"), readShape, (next) => {
   refresh();
 });
 refresh();
+showBest();
+showHistory();
 view.resize();
 initFold(document.querySelector("#fold-panel"), readShape);
