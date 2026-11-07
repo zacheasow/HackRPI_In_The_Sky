@@ -157,7 +157,7 @@ details[open] > summary::before {
 .editor {
   display: block;
   width: 100%;
-  height: 140px;
+  height: 200px;
   margin: 12px 0 var(--space-2);
   border-radius: var(--radius-s);
   background: #fff;

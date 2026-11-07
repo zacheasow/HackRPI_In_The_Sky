@@ -6,7 +6,8 @@ import { PAPER, SHAPE_LIMITS, defaultShape, derivePlane } from "./plane.js";
 const HANDLES = ["span", "rootChord", "tipChord", "sweep", "tail"];
 
 const HIT_RADIUS = 12;
-const HANDLE_RADIUS = 5;
+const HANDLE_RADIUS = 6;
+const RULER = 22;
 
 function clamp(value, limits, fallback) {
   if (!Number.isFinite(value)) return fallback;
@@ -97,14 +98,22 @@ function initEditor(canvas, getShape, setShape) {
   let camera = null;
   let drag = null;
   let hover = null;
+  let frame = null;
 
   function shape() {
     return clampShape(getShape());
   }
 
-  function fit() {
-    // Fit the largest planform the sliders can make, so a drag does not
-    // zoom the camera out from under the pointer.
+  function viewSize() {
+    return {
+      width: canvas.clientWidth || 320,
+      height: canvas.clientHeight || 220,
+    };
+  }
+
+  function limitsBox() {
+    // Largest planform the sliders can make. The camera stays on this box
+    // so a drag does not zoom out from under the pointer.
     const wide = clampShape({
       span: SHAPE_LIMITS.span[1],
       rootChord: SHAPE_LIMITS.rootChord[1],
@@ -115,20 +124,41 @@ function initEditor(canvas, getShape, setShape) {
     });
     const longTail = clampShape({ ...wide, span: SHAPE_LIMITS.span[0] });
     const wing = wingFrame(wide);
-    const pad = 0.04;
-    const minX = Math.min(0, wing.xLeTip) - pad;
-    const maxX = Math.max(derivePlane(wide).bodyLength, derivePlane(longTail).bodyLength, wing.xTeTip) + pad;
-    const minY = -wing.half - pad;
-    const maxY = wing.half + pad;
-    const width = canvas.clientWidth || 320;
-    const height = canvas.clientHeight || 220;
-    const scale = Math.min(width / (maxX - minX), height / (maxY - minY));
+    return {
+      minX: Math.min(0, wing.xLeTip),
+      maxX: Math.max(derivePlane(wide).bodyLength, derivePlane(longTail).bodyLength, wing.xTeTip),
+      minY: -wing.half,
+      maxY: wing.half,
+    };
+  }
+
+  function shapeBox(current) {
+    const wing = wingFrame(current);
+    const plane = derivePlane(current);
+    return {
+      minX: Math.min(0, wing.xLeTip),
+      maxX: Math.max(plane.bodyLength, wing.xTeTip),
+      minY: -wing.half,
+      maxY: wing.half,
+    };
+  }
+
+  function fit(current) {
+    const limits = limitsBox();
+    const box = frame || shapeBox(current);
+    const { width, height } = viewSize();
+    const drawH = Math.max(40, height - RULER);
+    const limitW = limits.maxX - limits.minX;
+    const limitH = limits.maxY - limits.minY;
+    const scale = 0.8 * Math.min(width / limitW, drawH / limitH);
+    const worldW = box.maxX - box.minX;
+    const worldH = box.maxY - box.minY;
     camera = {
-      minX,
-      maxY,
+      minX: box.minX,
+      maxY: box.maxY,
       scale,
-      offsetX: (width - (maxX - minX) * scale) / 2,
-      offsetY: (height - (maxY - minY) * scale) / 2,
+      offsetX: (width - worldW * scale) / 2,
+      offsetY: RULER + (drawH - worldH * scale) / 2,
     };
   }
 
@@ -167,14 +197,55 @@ function initEditor(canvas, getShape, setShape) {
     return points;
   }
 
+  function uiFont(px) {
+    const family = getComputedStyle(canvas).fontFamily || "Palatino, Georgia, serif";
+    return `${px}px ${family}`;
+  }
+
+  function crisp(value, ratio) {
+    return Math.round(value * ratio) / ratio;
+  }
+
+  function screenOffset(handle, wing) {
+    if (handle.id !== "span" && handle.id !== "sweep" && handle.id !== "tipChord") return { x: 0, y: 0 };
+    const sign = handle.y >= 0 ? 1 : -1;
+    const tipLe = toScreen({ x: wing.xLeTip, y: sign * wing.half });
+    const tipTe = toScreen({ x: wing.xTeTip, y: sign * wing.half });
+    const len = Math.hypot(tipTe.x - tipLe.x, tipTe.y - tipLe.y) || 1;
+    const ux = (tipTe.x - tipLe.x) / len;
+    const uy = (tipTe.y - tipLe.y) / len;
+    let px = -uy;
+    let py = ux;
+    const center = toScreen({ x: 0, y: 0 });
+    const midX = (tipLe.x + tipTe.x) / 2 - center.x;
+    const midY = (tipLe.y + tipTe.y) / 2 - center.y;
+    if (midX * px + midY * py < 0) {
+      px = -px;
+      py = -py;
+    }
+    const out = 10;
+    const along = 16;
+    if (handle.id === "span") return { x: px * out, y: py * out };
+    if (handle.id === "sweep") return { x: px * out - ux * along, y: py * out - uy * along };
+    return { x: px * out + ux * along, y: py * out + uy * along };
+  }
+
+  function placeHandle(handle, wing) {
+    const screen = toScreen(handle);
+    const frozen = drag && drag.id === handle.id && drag.side === handle.side;
+    const off = frozen ? { x: drag.ox, y: drag.oy } : screenOffset(handle, wing);
+    return { x: screen.x + off.x, y: screen.y + off.y, ox: off.x, oy: off.y };
+  }
+
   function hitHandle(px, py) {
+    const wing = wingFrame(shape());
     let best = null;
     let bestDistance = HIT_RADIUS;
     for (const handle of handlePoints()) {
-      const screen = toScreen(handle);
-      const distance = Math.hypot(screen.x - px, screen.y - py);
+      const place = placeHandle(handle, wing);
+      const distance = Math.hypot(place.x - px, place.y - py);
       if (distance <= bestDistance) {
-        best = handle;
+        best = { ...handle, ox: place.ox, oy: place.oy };
         bestDistance = distance;
       }
     }
@@ -186,17 +257,33 @@ function initEditor(canvas, getShape, setShape) {
     const wing = wingFrame(current);
     const tail = tailFrame(current);
     const plane = derivePlane(current);
-    const width = canvas.clientWidth || 320;
-    const height = canvas.clientHeight || 220;
-    const ratio = Math.min(window.devicePixelRatio || 1, 2);
+    const { width, height } = viewSize();
+    const ratio = window.devicePixelRatio || 1;
     canvas.width = Math.round(width * ratio);
     canvas.height = Math.round(height * ratio);
     ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
-    fit();
+    fit(current);
 
     ctx.clearRect(0, 0, width, height);
-    drawGrid(width, height);
+    ctx.fillStyle = "#f6f1e8";
+    ctx.fillRect(0, 0, width, RULER);
+    drawGrid(width, height, ratio);
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(0, RULER, width, height - RULER);
+    ctx.clip();
+    drawPlanform(wing, tail, plane, current);
+    drawBalance(plane, wing, height);
+    for (const handle of handlePoints()) {
+      const hot = (item) => item && item.id === handle.id && item.side === handle.side;
+      drawHandle(placeHandle(handle, wing), hot(drag) || hot(hover));
+    }
+    if (drag) drawTooltip(tipText(drag.id, current), placeHandle(drag, wing), width, height);
+    ctx.restore();
+    drawRuler(width, ratio);
+  }
 
+  function drawPlanform(wing, tail, plane, current) {
     const outline = [
       { x: wing.xLeTip, y: -wing.half },
       { x: wing.xLeRoot, y: 0 },
@@ -208,8 +295,8 @@ function initEditor(canvas, getShape, setShape) {
     ctx.beginPath();
     outline.forEach((point, index) => (index ? ctx.lineTo(point.x, point.y) : ctx.moveTo(point.x, point.y)));
     ctx.closePath();
-    ctx.fillStyle = "rgba(255, 255, 255, 0.9)";
-    ctx.strokeStyle = "#1d4e73";
+    ctx.fillStyle = "#fbf8f2";
+    ctx.strokeStyle = "#243027";
     ctx.lineWidth = 1.5;
     ctx.fill();
     ctx.stroke();
@@ -223,7 +310,6 @@ function initEditor(canvas, getShape, setShape) {
     ctx.beginPath();
     tailPoly.forEach((point, index) => (index ? ctx.lineTo(point.x, point.y) : ctx.moveTo(point.x, point.y)));
     ctx.closePath();
-    ctx.fillStyle = "rgba(255, 255, 255, 0.82)";
     ctx.fill();
     ctx.stroke();
 
@@ -232,75 +318,189 @@ function initEditor(canvas, getShape, setShape) {
     ctx.beginPath();
     ctx.moveTo(nose.x, nose.y);
     ctx.lineTo(stern.x, stern.y);
-    ctx.strokeStyle = "#16364d";
+    ctx.strokeStyle = "#243027";
     ctx.lineWidth = Math.max(2, PAPER.fuselageWidth * camera.scale);
     ctx.lineCap = "round";
     ctx.stroke();
 
-    const weight = toScreen({ x: 0, y: 0 });
     ctx.beginPath();
-    ctx.arc(weight.x, weight.y, 3.5 + current.noseWeight * 0.7, 0, Math.PI * 2);
-    ctx.fillStyle = "#e07a3d";
+    ctx.arc(nose.x, nose.y, 3.5 + current.noseWeight * 0.7, 0, Math.PI * 2);
+    ctx.fillStyle = "#d2652d";
     ctx.fill();
-
-    const stable = plane.staticMargin >= 0;
-    drawMarker(plane.cg, stable, "CG");
-    drawMarker(plane.neutralPoint, stable, "AC");
-
-    for (const handle of handlePoints()) {
-      const active = drag?.id === handle.id || hover?.id === handle.id;
-      const screen = toScreen(handle);
-      ctx.beginPath();
-      ctx.arc(screen.x, screen.y, active ? HANDLE_RADIUS + 1.5 : HANDLE_RADIUS, 0, Math.PI * 2);
-      ctx.fillStyle = active ? "#e07a3d" : "#ffffff";
-      ctx.strokeStyle = "#1d4e73";
-      ctx.lineWidth = 1.5;
-      ctx.fill();
-      ctx.stroke();
-    }
   }
 
-  function drawGrid(width, height) {
-    const start = Math.ceil(camera.minX * 100);
-    const end = Math.floor((camera.minX + width / camera.scale) * 100);
-    const yTop = camera.maxY;
-    const yBottom = camera.maxY - height / camera.scale;
+  function drawGrid(width, height, ratio) {
+    const xAt = (px) => camera.minX + (px - camera.offsetX) / camera.scale;
+    const yAt = (py) => camera.maxY - (py - camera.offsetY) / camera.scale;
+    const x0 = xAt(0);
+    const x1 = xAt(width);
+    const y0 = yAt(height);
+    const y1 = yAt(RULER);
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(0, RULER, width, height - RULER);
+    ctx.clip();
     ctx.lineWidth = 1;
-    ctx.font = "11px Segoe UI, sans-serif";
-    ctx.textAlign = "left";
-    ctx.textBaseline = "top";
-    for (let cm = Math.ceil(yBottom * 100); cm <= Math.floor(yTop * 100); cm += 1) {
-      const screen = toScreen({ x: camera.minX, y: cm / 100 });
-      ctx.strokeStyle = cm % 5 === 0 ? "rgba(22, 54, 77, 0.16)" : "rgba(22, 54, 77, 0.07)";
+    const strokeRow = (cm, horizontal) => {
+      const major = cm % 10 === 0;
+      ctx.strokeStyle = major ? "rgba(36, 48, 39, 0.12)" : "rgba(36, 48, 39, 0.04)";
       ctx.beginPath();
-      ctx.moveTo(0, screen.y);
-      ctx.lineTo(width, screen.y);
-      ctx.stroke();
-    }
-    for (let cm = start; cm <= end; cm += 1) {
-      const screen = toScreen({ x: cm / 100, y: 0 });
-      ctx.strokeStyle = cm % 5 === 0 ? "rgba(22, 54, 77, 0.16)" : "rgba(22, 54, 77, 0.07)";
-      ctx.beginPath();
-      ctx.moveTo(screen.x, 0);
-      ctx.lineTo(screen.x, height);
-      ctx.stroke();
-      if (cm % 5 === 0) {
-        ctx.fillStyle = "rgba(22, 54, 77, 0.55)";
-        ctx.fillText(String(cm), screen.x + 3, 4);
+      if (horizontal) {
+        const y = crisp(toScreen({ x: 0, y: cm / 100 }).y, ratio);
+        ctx.moveTo(0, y);
+        ctx.lineTo(width, y);
+      } else {
+        const x = crisp(toScreen({ x: cm / 100, y: 0 }).x, ratio);
+        ctx.moveTo(x, RULER);
+        ctx.lineTo(x, height);
       }
-    }
+      ctx.stroke();
+    };
+    for (let cm = Math.ceil(y0 * 20) * 5; cm <= y1 * 100; cm += 5) strokeRow(cm, true);
+    for (let cm = Math.ceil(x0 * 20) * 5; cm <= x1 * 100; cm += 5) strokeRow(cm, false);
+    ctx.restore();
   }
 
-  function drawMarker(x, stable, label) {
-    const screen = toScreen({ x, y: 0 });
-    ctx.beginPath();
-    ctx.arc(screen.x, screen.y, 4.5, 0, Math.PI * 2);
-    ctx.fillStyle = stable ? "#1d7a4a" : "#b4452a";
-    ctx.fill();
-    ctx.font = "12px Segoe UI, sans-serif";
+  function drawRuler(width, ratio) {
+    const xAt = (px) => camera.minX + (px - camera.offsetX) / camera.scale;
+    const pxPerCm = camera.scale / 100;
+    const steps = [1, 2, 5, 10, 20, 50];
+    const step = steps.find((item) => item * pxPerCm >= 36) || 50;
+    const minor = step / 2;
+    const x0 = xAt(0) * 100;
+    const x1 = xAt(width) * 100;
+    ctx.strokeStyle = "rgba(36, 48, 39, 0.28)";
+    ctx.lineWidth = 1;
+    ctx.font = uiFont(12);
+    ctx.fillStyle = "#5c6b60";
+    ctx.textBaseline = "top";
+    const labels = [];
+    for (let cm = Math.ceil(x0 / minor) * minor; cm <= x1 + 1e-6; cm += minor) {
+      const x = crisp(toScreen({ x: cm / 100, y: 0 }).x, ratio);
+      const major = Math.abs(cm / step - Math.round(cm / step)) < 1e-6;
+      ctx.beginPath();
+      ctx.moveTo(x, RULER - 1);
+      ctx.lineTo(x, RULER - (major ? 9 : 5));
+      ctx.stroke();
+      if (major && cm >= -1e-6) labels.push({ x, cm: Math.round(cm) });
+    }
+    const last = labels[labels.length - 1];
     ctx.textAlign = "center";
-    ctx.textBaseline = "bottom";
-    ctx.fillText(label, screen.x, screen.y - 7);
+    labels.forEach((label) => {
+      if (label === last) return;
+      ctx.fillText(String(label.cm), label.x, 2);
+    });
+    if (last) {
+      const text = `${last.cm} cm`;
+      const textW = ctx.measureText(text).width;
+      ctx.textAlign = "left";
+      const x = Math.min(last.x - ctx.measureText(String(last.cm)).width / 2, width - 4 - textW);
+      ctx.fillText(text, Math.max(2, x), 2);
+    }
+    ctx.beginPath();
+    ctx.moveTo(0, RULER - 0.5);
+    ctx.lineTo(width, RULER - 0.5);
+    ctx.stroke();
+  }
+
+  function drawBalance(plane, wing, height) {
+    const cg = toScreen({ x: plane.cg, y: 0 });
+    const ac = toScreen({ x: plane.neutralPoint, y: 0 });
+    const color = plane.staticMargin >= 0 ? "#1d7a4a" : "#9a3b28";
+    const yb = cg.y - 10;
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(cg.x, yb - 5);
+    ctx.lineTo(cg.x, yb);
+    ctx.lineTo(ac.x, yb);
+    ctx.lineTo(ac.x, yb - 5);
+    ctx.stroke();
+
+    const halfPx = Math.abs(cg.y - toScreen({ x: 0, y: wing.half }).y);
+    const lift = halfPx < 48 ? halfPx + 36 : 32;
+    const close = Math.abs(cg.x - ac.x) < 36;
+    const nudge = close ? 22 : 0;
+    const cgY = Math.max(RULER + 14, cg.y - lift);
+    const acY = Math.min(height - 14, ac.y + lift);
+    drawStation(cg, color, "CG", cg.x - nudge, cgY);
+    drawStation(ac, color, "AC", ac.x + nudge, acY);
+  }
+
+  function drawStation(dot, color, label, labelX, labelY) {
+    ctx.beginPath();
+    ctx.arc(dot.x, dot.y, 3.5, 0, Math.PI * 2);
+    ctx.fillStyle = color;
+    ctx.fill();
+    ctx.font = uiFont(12);
+    const w = ctx.measureText(label).width + 10;
+    const h = 16;
+    const x = labelX - w / 2;
+    const y = labelY - h / 2;
+    ctx.beginPath();
+    ctx.moveTo(dot.x, dot.y);
+    ctx.lineTo(labelX, labelY);
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 1;
+    ctx.stroke();
+    roundRect(x, y, w, h, h / 2);
+    ctx.fillStyle = "#fffaf4";
+    ctx.fill();
+    ctx.strokeStyle = color;
+    ctx.stroke();
+    ctx.fillStyle = "#243027";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText(label, labelX, labelY + 0.5);
+    ctx.beginPath();
+    ctx.arc(dot.x, dot.y, 3.5, 0, Math.PI * 2);
+    ctx.fillStyle = color;
+    ctx.fill();
+  }
+
+  function drawHandle(place, active) {
+    ctx.beginPath();
+    ctx.arc(place.x, place.y, HANDLE_RADIUS, 0, Math.PI * 2);
+    ctx.fillStyle = active ? "#d2652d" : "#fff";
+    ctx.fill();
+    ctx.lineWidth = 2;
+    ctx.strokeStyle = "#243027";
+    ctx.stroke();
+  }
+
+  function tipText(id, current) {
+    if (id === "span") return `${(current.span * 100).toFixed(1)} cm`;
+    if (id === "rootChord") return `${(current.rootChord * 100).toFixed(1)} cm`;
+    if (id === "tipChord") return `${(current.tipChord * 100).toFixed(1)} cm`;
+    if (id === "sweep") return `${current.sweepDeg.toFixed(0)}°`;
+    return `${(current.tailArea * 10000).toFixed(0)} cm²`;
+  }
+
+  function drawTooltip(text, anchor, width, height) {
+    ctx.font = uiFont(12);
+    const w = ctx.measureText(text).width + 12;
+    const h = 18;
+    let x = anchor.x + 12;
+    let y = anchor.y - h - 10;
+    if (x + w > width - 4) x = anchor.x - w - 12;
+    if (y < RULER + 2) y = Math.min(height - h - 4, anchor.y + 12);
+    roundRect(x, y, w, h, 4);
+    ctx.fillStyle = "#243027";
+    ctx.fill();
+    ctx.fillStyle = "#fbf8f2";
+    ctx.textAlign = "left";
+    ctx.textBaseline = "middle";
+    ctx.fillText(text, x + 6, y + h / 2);
+  }
+
+  function roundRect(x, y, w, h, r) {
+    ctx.beginPath();
+    ctx.moveTo(x + r, y);
+    ctx.arcTo(x + w, y, x + w, y + h, r);
+    ctx.arcTo(x + w, y + h, x, y + h, r);
+    ctx.arcTo(x, y + h, x, y, r);
+    ctx.arcTo(x, y, x + w, y, r);
+    ctx.closePath();
   }
 
   function redraw() {
@@ -313,7 +513,12 @@ function initEditor(canvas, getShape, setShape) {
     if (!handle) return;
     drag = handle;
     hover = handle;
-    canvas.setPointerCapture(event.pointerId);
+    frame = shapeBox(shape());
+    try {
+      canvas.setPointerCapture(event.pointerId);
+    } catch {
+      // The pointer can already be gone, and synthetic events have no capture target.
+    }
     canvas.style.cursor = "grabbing";
     event.preventDefault();
     draw();
@@ -322,7 +527,7 @@ function initEditor(canvas, getShape, setShape) {
   function onMove(event) {
     const pointer = pointerPoint(event);
     if (drag) {
-      const world = toWorld(pointer.x, pointer.y);
+      const world = toWorld(pointer.x - drag.ox, pointer.y - drag.oy);
       const signed = drag.side < 0 ? { x: world.x, y: -Math.abs(world.y) } : world;
       setShape(shapeFromHandle(shape(), drag.id, signed));
       canvas.style.cursor = "grabbing";
@@ -335,6 +540,7 @@ function initEditor(canvas, getShape, setShape) {
 
   function onUp() {
     drag = null;
+    frame = null;
     canvas.style.cursor = hover ? "grab" : "default";
     draw();
   }
