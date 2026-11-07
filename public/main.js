@@ -1,3 +1,4 @@
+import { getHealth } from "./api.js";
 import { diagnose } from "./diagnosis.js";
 import { clampShape, initEditor } from "./editor.js";
 import { SHAPE_LIMITS, defaultLaunch, defaultPlane, defaultShape, derivePlane } from "./plane.js";
@@ -373,3 +374,10 @@ refresh();
 showBest();
 showHistory();
 view.resize();
+
+const services = { coach: false, db: false };
+getHealth().then((health) => {
+  if (!health) return;
+  services.coach = health.coach === true;
+  services.db = health.db === true;
+});

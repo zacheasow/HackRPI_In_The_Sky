@@ -2,7 +2,7 @@
 
 A paper airplane flight simulator. Shape the wing, watch the balance, then see how far the glide carries.
 
-Shape sliders set the span, chords, sweep, tail, and nose weight. The page derives wing area, aspect ratio, mass, center of gravity, aerodynamic center, and static margin from that shape. The draggable editor, flight coach, and leaderboard are not wired up yet.
+Shape sliders set the span, chords, sweep, tail, and nose weight. The page derives wing area, aspect ratio, mass, center of gravity, aerodynamic center, and static margin from that shape. The flight coach and leaderboard are not wired up yet.
 
 ## Run locally
 
@@ -10,6 +10,7 @@ Requires Node.js 18 or newer.
 
 ```bash
 npm install
+cp .env.example .env
 npm start
 ```
 
@@ -34,7 +35,7 @@ cp .env.example .env
 | Variable | Purpose |
 | --- | --- |
 | `GEMINI_API_KEY` | Key for the Gemini flight coach. Stays on the server. |
-| `GEMINI_MODEL` | Gemini model name. Never hardcoded. |
+| `GEMINI_MODEL` | Gemini model name. Defaults to `gemini-2.5-flash`. |
 | `MONGODB_URI` | MongoDB Atlas connection string for the shared leaderboard. |
 | `PORT` | Port Express listens on. Defaults to `3000`. |
 
