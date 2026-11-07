@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>In the Clouds</title>
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <div class="sky">
+      <div class="cloud cloud-a" aria-hidden="true"></div>
+      <div class="cloud cloud-b" aria-hidden="true"></div>
+      <div class="cloud cloud-c" aria-hidden="true"></div>
+
+      <header class="top">
+        <p class="eyebrow">Paper airplane simulator</p>
+        <h1>In the Clouds</h1>
+        <p class="lede">Shape the wing, watch the balance, then throw it from the hillside.</p>
+      </header>
+
+      <main>
+        <section class="panel controls" aria-label="Airplane and launch">
+          <h2>Shape</h2>
+          <div id="shape-sliders"></div>
+
+          <h3>Stability</h3>
+          <dl class="readouts" id="readouts"></dl>
+          <p class="hint">CG and AC are measured from the nose. Positive static margin means the AC is behind the CG.</p>
+
+          <h2>Launch</h2>
+
+          <label class="slider" for="speed">
+            <span class="slider-label"><span>Speed</span><span><strong id="speed-out">4.0</strong> m/s</span></span>
+            <input id="speed" type="range" min="2" max="15" step="0.1" value="4" />
+          </label>
+
+          <label class="slider" for="angle">
+            <span class="slider-label"><span>Angle</span><span><strong id="angle-out">3</strong>°</span></span>
+            <input id="angle" type="range" min="-10" max="45" step="1" value="3" />
+          </label>
+
+          <p class="fixed-readout">Release height <strong>1.5 m</strong></p>
+
+          <h2>Wind</h2>
+          <div class="choice" id="wind-modes">
+            <label><input type="radio" name="wind-mode" value="random" checked /> Random</label>
+            <label><input type="radio" name="wind-mode" value="fixed" /> Fixed</label>
+            <label><input type="radio" name="wind-mode" value="off" /> Off</label>
+          </div>
+          <div id="wind-fixed-wrap" hidden>
+            <label class="slider" for="wind-fixed">
+              <span class="slider-label"><span>Fixed wind</span><span><strong id="wind-fixed-out">0.0</strong> m/s</span></span>
+              <input id="wind-fixed" type="range" min="-4" max="4" step="0.1" value="0" />
+            </label>
+            <p class="hint">Positive is a tailwind, negative is a headwind.</p>
+          </div>
+          <div class="seed-row" id="wind-seed-wrap">
+            <label for="wind-seed">Seed</label>
+            <input id="wind-seed" type="number" step="1" value="1" />
+            <button id="wind-new-seed" type="button" class="ghost">New seed</button>
+          </div>
+
+          <div class="actions">
+            <button id="launch" type="button">Launch</button>
+            <button id="reset" type="button" class="ghost">Reset</button>
+          </div>
+
+          <dl class="stats">
+            <div>
+              <dt>Distance</dt>
+              <dd id="distance">—</dd>
+            </div>
+            <div>
+              <dt>Flight time</dt>
+              <dd id="time">—</dd>
+            </div>
+            <div>
+              <dt>Max height</dt>
+              <dd id="max-height">—</dd>
+            </div>
+          </dl>
+
+          <p id="status" class="status">Set a throw, then launch.</p>
+        </section>
+
+        <section class="panel flight" aria-label="Flight view">
+          <canvas id="flight" width="960" height="640">Side view of the paper airplane flight</canvas>
+        </section>
+      </main>
+    </div>
+    <script type="module" src="main.js"></script>
+  </body>
+</html>

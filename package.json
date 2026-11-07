@@ -1,0 +1,18 @@
+{
+  "name": "in-the-clouds",
+  "version": "1.0.0",
+  "description": "Paper airplane flight simulator with a sky-and-clouds theme",
+  "type": "module",
+  "main": "server/index.js",
+  "scripts": {
+    "start": "node server/index.js",
+    "test": "node tests/baseline.js && node tests/plane.js && node tests/wind.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "dotenv": "^16.4.7",
+    "express": "^4.21.2"
+  }
+}
