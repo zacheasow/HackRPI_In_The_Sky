@@ -5,34 +5,33 @@
 import { windVelocity } from "./physics.js";
 
 const PAPER = "#f7f4ee";
-
-// Three parallax layers. Far is smaller and fainter; each cloud is several overlapping puffs.
-const CLOUD_LAYERS = [
-  {
-    speed: 8,
-    alpha: 0.34,
-    scale: 0.5,
-    y: 0.13,
-    clouds: [0.08, 0.42, 0.78],
-  },
-  {
-    speed: 16,
-    alpha: 0.55,
-    scale: 0.82,
-    y: 0.24,
-    clouds: [0.18, 0.55, 0.88],
-  },
-  {
-    speed: 28,
-    alpha: 0.72,
-    scale: 1.15,
-    y: 0.36,
-    clouds: [0.05, 0.36, 0.7],
-  },
-];
+const CLOUD_COUNT = 14;
 
 function lerp(a, b, t) {
   return a + (b - a) * t;
+}
+
+/** Tiny seeded RNG so the sky stays stable across frames. */
+function makeRng(seed) {
+  let s = seed >>> 0;
+  return () => {
+    s = (s + 0x6d2b79f5) >>> 0;
+    let t = s;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+function hillHeight(worldX) {
+  return Math.exp(-((worldX + 0.2) ** 2) / 3.2) * 0.42;
+}
+
+/** Stable 0..1 hash from an integer blade index (not camera-dependent). */
+function bladeNoise(index) {
+  let t = Math.imul(index ^ 0x27d4eb2d, 0x165667b1) >>> 0;
+  t = Math.imul(t ^ (t >>> 15), 0x27d4eb2d) >>> 0;
+  return t / 4294967296;
 }
 
 function sampleAt(samples, time) {
@@ -77,12 +76,33 @@ export class FlightView {
     this.onProgress = null;
     this.viewX = null;
     this.viewY = null;
+    this.clouds = null;
     this.reduced = window.matchMedia("(prefers-reduced-motion: reduce)");
 
     this.resize = this.resize.bind(this);
     this.observer = new ResizeObserver(this.resize);
     this.observer.observe(canvas);
     window.addEventListener("resize", this.resize);
+  }
+
+  ensureClouds(width, height) {
+    if (this.clouds && this.clouds.width === width && this.clouds.height === height) {
+      return this.clouds.list;
+    }
+    const rng = makeRng(0xc10d5 ^ Math.floor(width) ^ (Math.floor(height) << 9));
+    const list = [];
+    for (let i = 0; i < CLOUD_COUNT; i += 1) {
+      list.push({
+        x: rng() * width,
+        y: height * (0.06 + rng() * 0.38),
+        scale: 0.35 + rng() * 1.35,
+        alpha: 0.28 + rng() * 0.5,
+        speed: 6 + rng() * 28,
+        stretch: 0.75 + rng() * 0.7,
+      });
+    }
+    this.clouds = { width, height, list };
+    return list;
   }
 
   resize() {
@@ -198,12 +218,14 @@ export class FlightView {
     const driftTime = this.reduced.matches ? 0 : this.scene.time || 0;
 
     ctx.clearRect(0, 0, width, height);
-    this.drawSky(ctx, width, height, driftTime);
+    const camera = this.camera(bounds, width, height);
+    this.drawSky(ctx, width, height);
+    this.drawMountains(ctx, width, height, camera, driftTime);
+    this.drawClouds(ctx, width, height, driftTime);
     const wind = this.scene.wind || { mode: "off", steady: 0, phases: [0, 0, 0, 0] };
     const velocity = windVelocity(wind, this.scene.time || 0);
     this.drawWindStreaks(ctx, width, height, velocity, driftTime);
-    const camera = this.camera(bounds, width, height);
-    this.drawGround(ctx, camera, bounds);
+    this.drawGround(ctx, camera, bounds, driftTime);
     this.drawTrail(ctx, camera, this.scene.samples, this.scene.time);
     if (pose) this.drawPlane(ctx, camera, pose, this.scene.bodyLength);
     this.drawCaption(ctx, width, pose ? pose.x : 0, this.scene.live, velocity.x);
@@ -246,7 +268,7 @@ export class FlightView {
     };
   }
 
-  drawSky(ctx, width, height, time) {
+  drawSky(ctx, width, height) {
     const sky = ctx.createLinearGradient(0, 0, 0, height);
     sky.addColorStop(0, "#6ea8c9");
     sky.addColorStop(0.42, "#b7d7ea");
@@ -269,37 +291,116 @@ export class FlightView {
     haze.addColorStop(1, "rgba(243, 230, 212, 0.55)");
     ctx.fillStyle = haze;
     ctx.fillRect(0, height * 0.5, width, height * 0.36);
+  }
 
-    for (const layer of CLOUD_LAYERS) {
-      const drift = (time * layer.speed * this.dpr) % (width + 1);
-      for (const origin of layer.clouds) {
-        const x = ((origin * width - drift) % width + width) % width;
-        this.drawCloud(ctx, x, height * layer.y, layer.scale, layer.alpha);
-        this.drawCloud(ctx, x - width, height * layer.y, layer.scale, layer.alpha);
+  drawClouds(ctx, width, height, time) {
+    const clouds = this.ensureClouds(width, height);
+    const span = width + 220 * this.dpr;
+    const pad = 110 * this.dpr;
+    for (const cloud of clouds) {
+      const drift = time * cloud.speed * this.dpr;
+      const cycles = Math.floor((drift - cloud.x + pad) / span);
+      if (cloud.spawn !== cycles) {
+        cloud.spawn = cycles;
+        // New size/height each time a cloud re-enters from the right.
+        const rng = makeRng((cycles + 1) * 9973 + Math.floor(cloud.x) * 13);
+        cloud.y = height * (0.05 + rng() * 0.4);
+        cloud.scale = 0.3 + rng() * 1.45;
+        cloud.alpha = 0.25 + rng() * 0.55;
+        cloud.stretch = 0.7 + rng() * 0.8;
       }
+      let x = cloud.x - drift;
+      x = ((x % span) + span) % span - pad;
+      this.drawCloud(ctx, x, cloud.y, cloud.scale, cloud.alpha, cloud.stretch);
     }
   }
 
-  drawCloud(ctx, x, y, scale, alpha) {
+  drawCloud(ctx, x, y, scale, alpha, stretch = 1) {
     const d = this.dpr * scale;
+    const sx = stretch;
     const blobs = [
       [0, 10, 78, 26, "rgba(186, 198, 206, 0.45)"],
       [-48, 2, 42, 24, "rgba(255,255,255,0.72)"],
       [6, -8, 58, 28, "rgba(255,255,255,0.88)"],
       [52, 0, 36, 20, "rgba(255,255,255,0.7)"],
       [24, 8, 50, 18, "rgba(214, 224, 230, 0.4)"],
+      [-20, -4, 28, 16, "rgba(255,255,255,0.55)"],
     ];
     ctx.save();
     ctx.translate(x, y);
-    ctx.filter = `blur(${5 * this.dpr}px)`;
+    ctx.filter = `blur(${(3.5 + scale) * this.dpr}px)`;
     ctx.globalAlpha = alpha;
     for (const [bx, by, rx, ry, fill] of blobs) {
       ctx.fillStyle = fill;
       ctx.beginPath();
-      ctx.ellipse(bx * d, by * d, rx * d, ry * d, 0, 0, Math.PI * 2);
+      ctx.ellipse(bx * d * sx, by * d, rx * d * sx, ry * d, 0, 0, Math.PI * 2);
       ctx.fill();
     }
     ctx.restore();
+  }
+
+  drawMountains(ctx, width, height, camera, time) {
+    const ridgeY = camera.toY(0);
+    const layers = [
+      {
+        color: "#9bb8c9",
+        mist: "rgba(183, 215, 234, 0.55)",
+        base: ridgeY + 18 * this.dpr,
+        amp: height * 0.22,
+        drift: time * 1.2 * this.dpr,
+        peaks: [
+          [0.0, 0.15],
+          [0.12, 0.72],
+          [0.22, 0.28],
+          [0.34, 0.95],
+          [0.46, 0.4],
+          [0.58, 0.82],
+          [0.7, 0.35],
+          [0.84, 0.7],
+          [1.0, 0.22],
+        ],
+      },
+      {
+        color: "#7f9e8a",
+        mist: "rgba(200, 214, 190, 0.35)",
+        base: ridgeY + 8 * this.dpr,
+        amp: height * 0.14,
+        drift: time * 2.4 * this.dpr,
+        peaks: [
+          [0.0, 0.35],
+          [0.1, 0.55],
+          [0.2, 0.18],
+          [0.32, 0.78],
+          [0.45, 0.3],
+          [0.58, 0.68],
+          [0.72, 0.25],
+          [0.86, 0.6],
+          [1.0, 0.4],
+        ],
+      },
+    ];
+
+    for (const layer of layers) {
+      const shift = ((layer.drift % width) + width) % width;
+      ctx.beginPath();
+      ctx.moveTo(-shift, height);
+      ctx.lineTo(-shift, layer.base);
+      for (const [u, h] of layer.peaks) {
+        ctx.lineTo(u * width - shift, layer.base - layer.amp * h);
+      }
+      for (const [u, h] of layer.peaks) {
+        ctx.lineTo((1 + u) * width - shift, layer.base - layer.amp * h);
+      }
+      ctx.lineTo(width * 2 - shift, layer.base);
+      ctx.lineTo(width * 2 - shift, height);
+      ctx.closePath();
+      const fill = ctx.createLinearGradient(0, layer.base - layer.amp, 0, height);
+      fill.addColorStop(0, layer.color);
+      fill.addColorStop(0.7, layer.mist);
+      fill.addColorStop(1, "rgba(243, 230, 212, 0.15)");
+      ctx.fillStyle = fill;
+      ctx.fill();
+    }
   }
 
   drawWindStreaks(ctx, width, height, velocity, time) {
@@ -337,36 +438,53 @@ export class FlightView {
     ctx.restore();
   }
 
-  drawGround(ctx, camera, bounds) {
+  drawGround(ctx, camera, bounds, time) {
     const width = this.canvas.width;
     const height = this.canvas.height;
-    const hillAt = (worldX) => Math.exp(-((worldX + 0.2) ** 2) / 3.2) * 0.42;
 
     ctx.beginPath();
     ctx.moveTo(0, height);
     for (let px = 0; px <= width; px += 6) {
       const worldX = (px - camera.offsetX) / camera.scale;
-      ctx.lineTo(px, camera.toY(hillAt(worldX)));
+      ctx.lineTo(px, camera.toY(hillHeight(worldX)));
     }
     ctx.lineTo(width, height);
     ctx.closePath();
     const fill = ctx.createLinearGradient(0, camera.toY(0.5), 0, height);
-    fill.addColorStop(0, "#c5d7a8");
-    fill.addColorStop(0.45, "#8eae72");
-    fill.addColorStop(1, "#6d8f58");
+    fill.addColorStop(0, "#b9d08a");
+    fill.addColorStop(0.28, "#8fbc6a");
+    fill.addColorStop(0.62, "#6f9a52");
+    fill.addColorStop(1, "#4f7340");
     ctx.fillStyle = fill;
     ctx.fill();
+
+    // Soft soil bands so the hillside reads as terrain, not a flat fill.
+    ctx.save();
+    ctx.globalAlpha = 0.18;
+    for (let band = 0; band < 4; band += 1) {
+      const y0 = camera.toY(0.08 - band * 0.05);
+      const bandFill = ctx.createLinearGradient(0, y0, 0, height);
+      bandFill.addColorStop(0, "rgba(90, 70, 42, 0)");
+      bandFill.addColorStop(0.35, "rgba(90, 70, 42, 0.35)");
+      bandFill.addColorStop(1, "rgba(60, 80, 45, 0)");
+      ctx.fillStyle = bandFill;
+      ctx.fillRect(0, y0, width, height - y0);
+    }
+    ctx.restore();
 
     ctx.beginPath();
     for (let px = 0; px <= width; px += 6) {
       const worldX = (px - camera.offsetX) / camera.scale;
-      const y = camera.toY(hillAt(worldX));
+      const y = camera.toY(hillHeight(worldX));
       if (px === 0) ctx.moveTo(px, y);
       else ctx.lineTo(px, y);
     }
-    ctx.strokeStyle = "rgba(255,255,255,0.45)";
+    ctx.strokeStyle = "rgba(220, 235, 190, 0.55)";
     ctx.lineWidth = Math.max(1, this.dpr);
     ctx.stroke();
+
+    // Grass after the ridge stroke so embedded bases seal the seam.
+    this.drawGrass(ctx, camera, width, time);
 
     ctx.fillStyle = "rgba(36, 48, 39, 0.45)";
     ctx.font = `${12 * this.dpr}px "Iowan Old Style", Palatino, Georgia, serif`;
@@ -375,9 +493,76 @@ export class FlightView {
     for (let meter = start; meter <= bounds.maxX; meter += 1) {
       if (meter <= 0) continue;
       const x = camera.toX(meter);
-      const y = camera.toY(hillAt(meter));
-      ctx.fillText(String(meter), x, y + 16 * this.dpr);
+      const y = camera.toY(hillHeight(meter));
+      ctx.fillText(String(meter), x, y + 18 * this.dpr);
     }
+  }
+
+  drawGrass(ctx, camera, width, time) {
+    // World-space spacing keeps each blade tied to the hillside as the camera pans.
+    // Screen-column sampling was the flicker: offsetX/scale remapped every px → new hash each frame.
+    const worldStep = 0.055;
+    const margin = worldStep * 2;
+    const minWorld = (0 - camera.offsetX) / camera.scale - margin;
+    const maxWorld = (width - camera.offsetX) / camera.scale + margin;
+    const first = Math.floor(minWorld / worldStep);
+    const last = Math.ceil(maxWorld / worldStep);
+    const bladeH = 13 * this.dpr;
+    const swayAmt = this.reduced.matches ? 0 : 3.2 * this.dpr;
+
+    ctx.save();
+    for (let i = first; i <= last; i += 1) {
+      const n = bladeNoise(i);
+      if (n < 0.22) continue;
+      const n2 = bladeNoise(i + 7919);
+      const n3 = bladeNoise(i + 104729);
+
+      // Stagger in world X; bury bases below the ridge so no floating seam shows.
+      const rootWorldX = i * worldStep + (n2 - 0.5) * worldStep * 1.15;
+      const sx = camera.toX(rootWorldX);
+      if (sx < -16 * this.dpr || sx > width + 16 * this.dpr) continue;
+
+      const surfaceY = camera.toY(hillHeight(rootWorldX));
+      const embed = (4.5 + n3 * 5.5) * this.dpr;
+      const rootY = surfaceY + embed;
+      const above = bladeH * (0.45 + n * 1.25);
+      const baseW = (2.4 + n2 * 3.2) * this.dpr;
+      const restLean = (n - 0.5) * 5.5 * this.dpr;
+      // Tip sway only; root stays fixed in world space.
+      const sway = swayAmt * Math.sin(time * 2.15 + i * 0.63 + n * 4.1);
+      const tipX = sx + restLean + sway;
+      const tipY = surfaceY - above;
+
+      const shade =
+        n > 0.66
+          ? "rgba(48, 98, 40, 0.92)"
+          : n > 0.4
+            ? "rgba(78, 128, 52, 0.9)"
+            : "rgba(118, 162, 64, 0.84)";
+      ctx.fillStyle = shade;
+      ctx.beginPath();
+      ctx.moveTo(sx - baseW, rootY);
+      ctx.lineTo(sx + baseW, rootY);
+      ctx.lineTo(tipX, tipY);
+      ctx.closePath();
+      ctx.fill();
+
+      if (n > 0.68) {
+        const twin = bladeNoise(i + 224737);
+        const twinLean = restLean * -0.55 + (twin - 0.5) * 3 * this.dpr;
+        const twinSway = sway * 0.7;
+        const twinAbove = above * (0.55 + twin * 0.35);
+        const twinW = baseW * 0.72;
+        const twinRootY = rootY + (0.8 + twin * 2) * this.dpr;
+        ctx.beginPath();
+        ctx.moveTo(sx - twinW * 0.2, twinRootY);
+        ctx.lineTo(sx + twinW, twinRootY);
+        ctx.lineTo(sx + twinLean + twinSway, surfaceY - twinAbove);
+        ctx.closePath();
+        ctx.fill();
+      }
+    }
+    ctx.restore();
   }
 
   drawTrail(ctx, camera, samples, time) {
@@ -404,15 +589,15 @@ export class FlightView {
     const y = camera.toY(pose.y);
     const altitude = Math.max(0, pose.y);
     const shadowScale = 1 / (1 + altitude * 0.45);
-    const drawScale = Math.max(camera.scale, (34 * this.dpr) / 0.22);
+    const drawScale = Math.max(camera.scale, (52 * this.dpr) / 0.22);
 
-    const groundY = Math.exp(-((pose.x + 0.2) ** 2) / 3.2) * 0.42;
+    const groundY = hillHeight(pose.x);
     ctx.save();
     ctx.translate(camera.toX(pose.x), camera.toY(groundY) + 3 * this.dpr);
     ctx.scale(shadowScale, shadowScale * 0.28);
     ctx.fillStyle = "rgba(48, 64, 42, 0.18)";
     ctx.beginPath();
-    ctx.ellipse(0, 0, 18 * this.dpr, 8 * this.dpr, 0, 0, Math.PI * 2);
+    ctx.ellipse(0, 0, 24 * this.dpr, 10 * this.dpr, 0, 0, Math.PI * 2);
     ctx.fill();
     ctx.restore();
 
@@ -421,7 +606,7 @@ export class FlightView {
     ctx.scale(drawScale, -drawScale);
     ctx.rotate(pose.theta);
     ctx.lineJoin = "round";
-    ctx.lineWidth = 1.1 / drawScale;
+    ctx.lineWidth = 1.35 / drawScale;
     ctx.beginPath();
     ctx.moveTo(0.11, 0);
     ctx.lineTo(0.02, 0.012);
@@ -432,13 +617,13 @@ export class FlightView {
     ctx.lineTo(-0.01, -0.012);
     ctx.closePath();
     ctx.fillStyle = PAPER;
-    ctx.strokeStyle = "rgba(36, 48, 39, 0.35)";
+    ctx.strokeStyle = "rgba(28, 38, 30, 0.62)";
     ctx.fill();
     ctx.stroke();
     ctx.beginPath();
     ctx.moveTo(0.08, 0.001);
     ctx.lineTo(-0.06, 0.006);
-    ctx.strokeStyle = "rgba(36, 48, 39, 0.22)";
+    ctx.strokeStyle = "rgba(28, 38, 30, 0.4)";
     ctx.stroke();
     ctx.restore();
   }
