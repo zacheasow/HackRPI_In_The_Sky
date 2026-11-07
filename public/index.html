@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>In the Clouds</title>
     <link rel="stylesheet" href="style.css" />
+    <link rel="stylesheet" href="fold.css" />
   </head>
   <body>
     <div class="sky">
@@ -85,6 +86,22 @@
 
         <section class="panel flight" aria-label="Flight view">
           <canvas id="flight" width="960" height="640">Side view of the paper airplane flight</canvas>
+        </section>
+
+        <section class="panel fold-panel" id="fold-panel" aria-label="Paper folding animation">
+          <div class="fold-head">
+            <h2>Fold</h2>
+            <p class="fold-caption" aria-live="polite">Flat sheet</p>
+          </div>
+          <div class="fold-stage"></div>
+          <div class="fold-controls">
+            <button type="button" data-fold="play">Fold</button>
+            <button type="button" class="ghost" data-fold="replay">Replay</button>
+            <label class="fold-scrub">
+              <span>Scrub</span>
+              <input type="range" min="0" max="5350" step="1" value="0" data-fold="scrub" aria-label="Fold progress" />
+            </label>
+          </div>
         </section>
       </main>
     </div>

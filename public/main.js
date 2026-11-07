@@ -1,6 +1,7 @@
 import { CONFIG, resolveWind, simulate } from "./physics.js";
 import { SHAPE_LIMITS, defaultLaunch, defaultPlane, defaultShape, derivePlane } from "./plane.js";
 import { FlightView } from "./render.js";
+import { initFold } from "./fold.js";
 
 const SHAPE_FIELDS = [
   { key: "span", label: "Wing span", unit: "cm", scale: 100, step: 0.5, digits: 1 },
@@ -212,3 +213,4 @@ buildShapeSliders();
 applyWindDefaults();
 refresh();
 view.resize();
+initFold(document.querySelector("#fold-panel"), readShape);

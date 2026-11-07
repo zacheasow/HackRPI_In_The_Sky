@@ -1,0 +1,163 @@
+/* Paper folding panel: sky-and-clouds theme, CSS 3D panels driven by fold.js. */
+
+.fold-panel {
+  grid-column: 2;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 16px 18px 18px;
+}
+
+.fold-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.fold-head h2 {
+  margin: 0;
+  font-size: 1.05rem;
+}
+
+.fold-caption {
+  margin: 0;
+  color: var(--ink-soft, #3d6480);
+  font-size: 0.86rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.fold-stage {
+  position: relative;
+  height: 340px;
+  border-radius: 16px;
+  perspective: 1200px;
+  perspective-origin: 50% 44%;
+  background:
+    radial-gradient(ellipse at 50% 92%, rgba(255, 255, 255, 0.55), transparent 62%),
+    linear-gradient(180deg, rgba(110, 182, 228, 0.22), rgba(231, 245, 251, 0.5));
+  overflow: hidden;
+}
+
+.fold-rig {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 0;
+  height: 0;
+  transform-style: preserve-3d;
+  will-change: transform;
+}
+
+.fold-sheet {
+  position: absolute;
+  width: 0;
+  height: 0;
+  transform-style: preserve-3d;
+}
+
+.fold-piece {
+  position: absolute;
+  transform-style: preserve-3d;
+}
+
+.fold-flap {
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
+.fold-face {
+  position: absolute;
+  inset: 0;
+  backface-visibility: hidden;
+  background-color: #fbf8f1;
+  background-image: linear-gradient(150deg, rgba(255, 255, 255, 0.92), rgba(230, 221, 205, 0.6));
+  box-shadow: inset 0 0 0 1px rgba(22, 54, 77, 0.14);
+}
+
+.fold-face-back {
+  transform: rotateY(180deg);
+  background-color: #eee7d9;
+  background-image: linear-gradient(150deg, rgba(240, 233, 220, 0.95), rgba(214, 204, 186, 0.75));
+}
+
+/* Light comes from the right: the wing that faces away reads a touch darker. */
+.fold-half-left .fold-face-front {
+  background-image: linear-gradient(150deg, rgba(252, 249, 242, 0.9), rgba(219, 209, 191, 0.62));
+}
+
+/* Shade each half along the spine so the crease reads as a fold. */
+.fold-half-left .fold-face {
+  box-shadow:
+    inset 0 0 0 1px rgba(22, 54, 77, 0.14),
+    inset -26px 0 26px -18px rgba(22, 54, 77, 0.55);
+}
+
+.fold-half-right .fold-face {
+  box-shadow:
+    inset 0 0 0 1px rgba(22, 54, 77, 0.14),
+    inset 26px 0 26px -18px rgba(22, 54, 77, 0.55);
+}
+
+/* Folded flaps cast a thin shadow so each layer reads as separate paper. */
+.fold-flap .fold-face {
+  filter: drop-shadow(0 1px 2px rgba(22, 54, 77, 0.22));
+}
+
+.fold-shadow {
+  position: absolute;
+  border-radius: 50%;
+  background: radial-gradient(ellipse at center, rgba(22, 54, 77, 0.3), rgba(22, 54, 77, 0) 66%);
+  filter: blur(7px);
+  transform: translateZ(-10px);
+}
+
+.fold-controls {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.fold-controls button {
+  padding: 8px 18px;
+  font-size: 0.92rem;
+}
+
+.fold-scrub {
+  flex: 1 1 180px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--ink-soft, #3d6480);
+  font-size: 0.82rem;
+}
+
+.fold-scrub input[type="range"] {
+  flex: 1;
+  min-width: 0;
+}
+
+.fold-controls button:focus-visible,
+.fold-scrub input:focus-visible {
+  outline: 2px solid var(--accent, #e07a3d);
+  outline-offset: 2px;
+}
+
+@media (max-width: 860px) {
+  .fold-panel {
+    grid-column: auto;
+  }
+
+  .fold-stage {
+    height: 280px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .fold-stage,
+  .fold-rig {
+    transition: none;
+  }
+}
