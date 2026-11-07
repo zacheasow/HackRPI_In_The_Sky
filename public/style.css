@@ -52,6 +52,25 @@ body {
   margin: 0 auto var(--space-3);
 }
 
+.nav {
+  display: flex;
+  gap: var(--space-2);
+  margin-bottom: var(--space-2);
+}
+
+.nav a {
+  color: #f7f4ee;
+  text-decoration: none;
+}
+
+body.board .nav a {
+  color: var(--ink);
+}
+
+.nav a[aria-current="page"] {
+  border-bottom: 2px solid currentColor;
+}
+
 h1 {
   margin: 0;
   font-size: var(--title);
@@ -272,6 +291,8 @@ button.text:hover {
   background: var(--card);
   border-radius: var(--radius-m);
   padding: var(--space-2);
+  min-height: 0;
+  overflow: auto;
 }
 
 .tabs {
@@ -427,6 +448,94 @@ button.text:hover {
     height: 48vh;
     min-height: 260px;
   }
+}
+
+.submit-box {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1) var(--space-2);
+  margin-top: var(--space-2);
+}
+
+.submit-box[hidden] {
+  display: none;
+}
+
+.submit-box input {
+  width: 9rem;
+  padding: 6px 8px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-s);
+  background: #fff;
+  color: var(--ink);
+  font: inherit;
+}
+
+.submit-box .note {
+  flex-basis: 100%;
+  margin: 0;
+}
+
+button.quiet {
+  border: 1px solid var(--line);
+  border-radius: var(--radius-s);
+  padding: 8px 12px;
+  background: transparent;
+  color: var(--ink);
+}
+
+body.board {
+  background: var(--paper);
+  color: var(--ink);
+}
+
+body.board h1,
+body.board .lede {
+  color: var(--ink);
+}
+
+body.board .page {
+  height: auto;
+  overflow: visible;
+  min-height: 100vh;
+}
+
+.board-main {
+  display: block;
+  max-width: 760px;
+}
+
+.board-bar {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: var(--space-2);
+}
+
+.board-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.board-table th,
+.board-table td {
+  padding: 12px 8px;
+  text-align: left;
+  border-bottom: 1px solid var(--line);
+}
+
+.board-table th {
+  font-size: var(--label);
+  font-weight: 600;
+}
+
+.board-table td:nth-child(3),
+.board-table th:nth-child(3) {
+  font-variant-numeric: tabular-nums;
+}
+
+.board-table tr.top td {
+  background: #efe4d4;
 }
 
 @media (prefers-reduced-motion: reduce) {

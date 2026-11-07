@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Leaderboard — In the Clouds</title>
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body class="board">
+    <div class="page">
+      <header class="top">
+        <nav class="nav">
+          <a href="/">Fly</a>
+          <a href="/leaderboard.html" aria-current="page">Leaderboard</a>
+        </nav>
+        <h1>Leaderboard</h1>
+        <p id="board-note" class="lede">The farthest throws.</p>
+      </header>
+      <main class="board-main">
+        <div class="board-bar">
+          <button id="board-refresh" type="button" class="quiet">Refresh</button>
+        </div>
+        <table class="board-table">
+          <thead>
+            <tr>
+              <th>Rank</th>
+              <th>Name</th>
+              <th>Distance</th>
+              <th>Wind</th>
+              <th>Date</th>
+            </tr>
+          </thead>
+          <tbody id="board-rows"></tbody>
+        </table>
+        <p id="board-empty" class="note" hidden>No flights yet.</p>
+      </main>
+    </div>
+    <script type="module" src="leaderboard.js"></script>
+  </body>
+</html>

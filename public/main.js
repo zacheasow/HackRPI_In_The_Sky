@@ -1,4 +1,4 @@
-import { getHealth } from "./api.js";
+import { designs, getHealth, saveLocalBoard } from "./api.js";
 import { diagnose } from "./diagnosis.js";
 import { clampShape, initEditor } from "./editor.js";
 import { SHAPE_LIMITS, defaultLaunch, defaultPlane, defaultShape, derivePlane } from "./plane.js";
@@ -284,6 +284,66 @@ function buildShapeSliders() {
   }
 }
 
+const submitBox = document.querySelector("#submit-box");
+const submitNote = document.querySelector("#submit-note");
+const nameInput = document.querySelector("#pilot-name");
+let lastFlight = null;
+
+function pilotName(value) {
+  return String(value ?? "").replace(/<[^>]*>/g, "").replace(/[<>]/g, "").trim().slice(0, 20);
+}
+
+function offerSubmit(result, shape, launch, wind) {
+  const blocked = !(result && result.distance > 0 && result.endReason !== "blown back");
+  lastFlight = blocked ? null : { result, shape, launch, wind };
+  if (submitBox) submitBox.hidden = blocked;
+  if (submitNote) submitNote.textContent = "";
+  if (!blocked) {
+    document.querySelectorAll("[data-tab]").forEach((button) => {
+      const on = button.dataset.tab === "results";
+      button.setAttribute("aria-selected", String(on));
+      button.tabIndex = on ? 0 : -1;
+    });
+    document.querySelector("#tab-results").hidden = false;
+    document.querySelector("#tab-history").hidden = true;
+  }
+}
+
+submitBox?.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  if (!lastFlight) return;
+  const name = pilotName(nameInput.value);
+  if (!name) {
+    submitNote.textContent = "Enter a name.";
+    return;
+  }
+  const saved = await designs({
+    name,
+    params: {
+      ...lastFlight.shape,
+      speed: lastFlight.launch.speed,
+      angleDeg: lastFlight.launch.angleDeg,
+    },
+    wind: lastFlight.wind,
+  });
+  if (saved?.ok) {
+    submitNote.textContent = `Rank ${saved.rank}.`;
+    return;
+  }
+  saveLocalBoard({
+    name,
+    distance: lastFlight.result.distance,
+    span: lastFlight.shape.span,
+    chord: lastFlight.shape.rootChord,
+    mass: derivePlane(lastFlight.shape).mass,
+    speed: lastFlight.launch.speed,
+    angle: lastFlight.launch.angleDeg,
+    wind: lastFlight.wind.mode === "off" ? "off" : "on",
+    createdAt: new Date().toISOString(),
+  });
+  submitNote.textContent = "Saved locally";
+});
+
 document.querySelector("#launch").addEventListener("click", () => {
   const savedShape = { ...readShape() };
   const savedLaunch = readLaunch();
@@ -297,6 +357,7 @@ document.querySelector("#launch").addEventListener("click", () => {
   statusOut.textContent = endLabel(result.endReason);
   showDiagnosis(note);
   remember(result, note, savedShape, savedLaunch);
+  offerSubmit(result, savedShape, savedLaunch, readWind());
   view.play(result, (progress) => {
     if (progress >= 1) playing = false;
   });
@@ -309,6 +370,7 @@ document.querySelector("#reset").addEventListener("click", () => {
   angleInput.value = String(launchDefaults.angleDeg);
   applyWindDefaults();
   clearStats();
+  offerSubmit(null);
   refresh();
 });
 

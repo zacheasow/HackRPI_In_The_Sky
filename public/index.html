@@ -9,6 +9,10 @@
   <body>
     <div class="page">
       <header class="top">
+        <nav class="nav">
+          <a href="/" aria-current="page">Fly</a>
+          <a href="/leaderboard.html">Leaderboard</a>
+        </nav>
         <h1>In the Clouds</h1>
         <p class="lede">Shape the wing, then throw it from the hillside.</p>
       </header>
@@ -40,6 +44,12 @@
               <p id="status" class="status">Set a throw, then launch.</p>
               <p id="diagnosis-headline" class="diagnosis-headline" aria-live="polite"></p>
               <ul id="diagnosis-details" class="diagnosis-details"></ul>
+              <form id="submit-box" class="submit-box" hidden>
+                <label for="pilot-name">Name</label>
+                <input id="pilot-name" name="pilot" maxlength="20" autocomplete="nickname" />
+                <button type="submit" class="quiet">Submit to leaderboard</button>
+                <p id="submit-note" class="note"></p>
+              </form>
             </div>
 
             <div id="tab-history" role="tabpanel" hidden>

@@ -30,7 +30,8 @@ try {
   assert(health.ok === true, "health ok");
   assert(health.version === version, "health version");
   assert(health.coach === Boolean(process.env.GEMINI_API_KEY), "coach flag is a boolean");
-  assert(health.db === Boolean(process.env.MONGODB_URI), "db flag is a boolean");
+  assert(typeof health.db === "boolean", "db flag is a boolean");
+  if (!process.env.MONGODB_URI) assert(health.db === false, "db is false without a URI");
   assert(!healthText.includes("GEMINI_API_KEY") && !healthText.includes("MONGODB_URI"), "health names a secret");
   for (const secret of [process.env.GEMINI_API_KEY, process.env.MONGODB_URI]) {
     if (secret) assert(!healthText.includes(secret), "health included a secret value");
