@@ -50,11 +50,14 @@ assert(once.wind.seed === 42 && twice.wind.steady === once.wind.steady, "the sam
 const calm = simulate(glider, glideLaunch, { mode: "off" }).distance;
 const tail = simulate(glider, glideLaunch, { mode: "fixed", fixedSpeed: 3, seed: 1 });
 const head = simulate(glider, glideLaunch, { mode: "fixed", fixedSpeed: -3, seed: 1 });
-console.log(`Fixed +3 m/s: ${tail.distance.toFixed(2)} m, fixed -3 m/s: ${head.distance.toFixed(2)} m`);
+console.log(`Fixed +3 m/s: ${tail.distance.toFixed(2)} m, fixed -3 m/s: ${head.distance.toFixed(2)} m (${head.endReason}, ${head.flightTime.toFixed(2)} s)`);
 assert(tail.wind.mode === "fixed" && tail.wind.steady === 3, "fixed mode should keep the requested tailwind");
 assert(head.wind.steady === -3, "fixed mode should keep the requested headwind");
 assert(tail.distance > calm, "a +3 m/s tailwind should land farther than calm");
+assert(head.distance >= 0, "a headwind distance should not be negative");
 assert(head.distance < calm, "a -3 m/s headwind should land shorter than calm");
+assert(head.flightTime < 15, "a -3 m/s headwind should finish within 15 s");
+assert(head.blownBack === true && head.endReason === "blown back", "a backward landing should be marked blown back");
 
 if (process.exitCode) {
   console.error("Wind checks failed.");

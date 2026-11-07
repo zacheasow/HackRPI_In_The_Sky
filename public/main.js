@@ -78,6 +78,7 @@ function readShape() {
 
 function endLabel(reason) {
   if (reason === "ground") return "Landed.";
+  if (reason === "blown back") return "Blown back.";
   if (reason === "timeout") return "Still aloft when the timer stopped.";
   if (reason === "nan") return "The flight numbers fell apart and the sim stopped.";
   if (reason === "out-of-bounds") return "The flight left the sky and the sim stopped.";

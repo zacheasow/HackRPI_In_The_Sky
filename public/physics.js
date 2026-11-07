@@ -465,7 +465,11 @@ export function simulate(planeInput, launchInput, windInput) {
     if (finiteState(state)) takeSample(windVelocity(windField, t));
   }
 
-  const distance = Number.isFinite(state.x) ? state.x : 0;
+  // A headwind can stall the glider and carry it back past the throw.
+  // Score that as no distance, and say so, instead of a negative result.
+  const landedBehind = Number.isFinite(state.x) && state.x < 0;
+  if (landedBehind) endReason = "blown back";
+  const distance = Number.isFinite(state.x) ? Math.max(0, state.x) : 0;
 
   return {
     distance,
@@ -474,6 +478,7 @@ export function simulate(planeInput, launchInput, windInput) {
     endReason,
     stalled,
     stallTime,
+    blownBack: endReason === "blown back",
     samples,
     plane,
     launch,
