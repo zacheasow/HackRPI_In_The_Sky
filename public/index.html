@@ -6,118 +6,66 @@
     <title>In the Clouds</title>
     <link rel="stylesheet" href="style.css" />
   </head>
-  <body>
+  <body class="home">
     <div class="page">
       <header class="top">
         <nav class="nav">
-          <a href="/" aria-current="page">Fly</a>
+          <a href="/" aria-current="page">Home</a>
+          <a href="/sim.html">Fly</a>
           <a href="/leaderboard.html">Leaderboard</a>
         </nav>
-        <h1>In the Clouds</h1>
-        <p class="lede">Shape the wing, then throw it from the hillside.</p>
       </header>
-
       <main>
-        <section class="stage" aria-label="Flight">
-          <canvas id="flight" width="960" height="640">Side view of the paper airplane flight</canvas>
-          <div class="report">
-            <div class="tabs" role="tablist" aria-label="Flight notes">
-              <button type="button" role="tab" data-tab="results" aria-selected="true" aria-controls="tab-results">Results</button>
-              <button type="button" role="tab" data-tab="history" aria-selected="false" aria-controls="tab-history" tabindex="-1">History</button>
-            </div>
-
-            <div id="tab-results" role="tabpanel">
-              <dl class="stats">
-                <div>
-                  <dt>Distance</dt>
-                  <dd id="distance">—</dd>
-                </div>
-                <div>
-                  <dt>Flight time</dt>
-                  <dd id="time">—</dd>
-                </div>
-                <div>
-                  <dt>Max height</dt>
-                  <dd id="max-height">—</dd>
-                </div>
-              </dl>
-              <p id="status" class="status">Set a throw, then launch.</p>
-              <p id="diagnosis-headline" class="diagnosis-headline" aria-live="polite"></p>
-              <ul id="diagnosis-details" class="diagnosis-details"></ul>
-              <form id="submit-box" class="submit-box" hidden>
-                <label for="pilot-name">Name</label>
-                <input id="pilot-name" name="pilot" maxlength="20" autocomplete="nickname" />
-                <button type="submit" class="quiet">Submit to leaderboard</button>
-                <p id="submit-note" class="note"></p>
-              </form>
-            </div>
-
-            <div id="tab-history" role="tabpanel" hidden>
-              <p id="best-flight" class="best-flight">Best distance: no flights yet.</p>
-              <div class="history-head">
-                <button id="history-clear" type="button" class="text">Clear</button>
-              </div>
-              <ul id="history" class="history"></ul>
-            </div>
+        <section class="hero">
+          <div>
+            <h1>In the Clouds</h1>
+            <p class="lede">Design a paper airplane and throw it through seeded wind. The sim shows how far it flew, and why.</p>
+            <p class="landing-actions">
+              <a class="start" href="/sim.html">Start flying</a>
+              <a class="secondary" href="/leaderboard.html">View leaderboard</a>
+            </p>
+            <p id="top-flight" class="note stat-row" hidden></p>
           </div>
+          <figure class="preview">
+            <canvas id="flight" width="960" height="640">Side view of the default glider</canvas>
+            <figcaption id="preview-caption">Default glider, 12.39 m</figcaption>
+          </figure>
         </section>
-
-        <section class="controls" aria-label="Airplane and launch">
-          <div class="control-body">
-          <details class="section" open>
-            <summary>Shape</summary>
-            <canvas id="editor" class="editor" width="640" height="440" aria-label="Top-down airplane shape. Drag the handles to change the wing and tail."></canvas>
-            <div id="shape-sliders"></div>
-          </details>
-
-          <details class="section" open>
-            <summary>Launch</summary>
-            <label class="slider" for="speed">
-              <span class="slider-label"><span>Speed</span><span><strong id="speed-out">4.0</strong> m/s</span></span>
-              <input id="speed" type="range" min="2" max="15" step="0.1" value="4" />
-            </label>
-            <label class="slider" for="angle">
-              <span class="slider-label"><span>Angle</span><span><strong id="angle-out">3</strong>°</span></span>
-              <input id="angle" type="range" min="-10" max="45" step="1" value="3" />
-            </label>
-            <p class="note">Release height 1.5 m</p>
-
-            <p class="note">Wind</p>
-            <div class="choice" id="wind-modes">
-              <label><input type="radio" name="wind-mode" value="random" checked /> Random</label>
-              <label><input type="radio" name="wind-mode" value="fixed" /> Fixed</label>
-              <label><input type="radio" name="wind-mode" value="off" /> Off</label>
-            </div>
-            <div id="wind-fixed-wrap" hidden>
-              <label class="slider" for="wind-fixed">
-                <span class="slider-label"><span>Fixed wind</span><span><strong id="wind-fixed-out">0.0</strong> m/s</span></span>
-                <input id="wind-fixed" type="range" min="-4" max="4" step="0.1" value="0" />
-              </label>
-              <p class="note">Positive is a tailwind, negative is a headwind.</p>
-            </div>
-            <div class="seed-row" id="wind-seed-wrap">
-              <label for="wind-seed">Seed</label>
-              <input id="wind-seed" type="number" step="1" value="1" />
-              <button id="wind-new-seed" type="button" class="text">New seed</button>
-            </div>
-          </details>
-
-          <details class="section">
-            <summary>
-              <span>Stability</span>
-              <span class="summary" id="stability-summary">Margin +20%, stable</span>
-            </summary>
-            <dl class="readouts" id="readouts"></dl>
-            <p class="note">CG and AC are measured from the nose. Positive static margin means the AC is behind the CG.</p>
-          </details>
-          </div>
-          <div class="actions">
-            <button id="launch" type="button">Launch</button>
-            <button id="reset" type="button" class="text">Reset</button>
+        <section class="how" aria-labelledby="how-title">
+          <h2 id="how-title">How it works</h2>
+          <div class="how-grid">
+            <article class="how-card">
+              <svg viewBox="0 0 32 32" aria-hidden="true">
+                <path d="M4 22 L14 10 L28 18 L16 20 Z" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" />
+                <path d="M14 10 L16 20" fill="none" stroke="currentColor" stroke-width="1.6" />
+              </svg>
+              <h3>Shape the wing</h3>
+              <p>Drag the handles to change the wing.</p>
+            </article>
+            <article class="how-card">
+              <svg viewBox="0 0 32 32" aria-hidden="true">
+                <path d="M4 12 H18 M4 18 H14 M4 24 H20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" />
+                <path d="M22 16 L28 18 L22 22" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" stroke-linecap="round" />
+              </svg>
+              <h3>Throw it into the wind</h3>
+              <p>Launch through seeded wind, or turn it off.</p>
+            </article>
+            <article class="how-card">
+              <svg viewBox="0 0 32 32" aria-hidden="true">
+                <path d="M4 24 C10 24 12 8 18 12 S26 20 28 8" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" />
+                <circle cx="28" cy="8" r="1.6" fill="currentColor" />
+              </svg>
+              <h3>See why it flew</h3>
+              <p>Read the distance and why it landed there.</p>
+            </article>
           </div>
         </section>
       </main>
+      <footer class="site-foot">
+        <span>Built at HackRPI 2026</span>
+        <a href="https://github.com/zacheasow/HackRPI_In_The_Sky">GitHub</a>
+      </footer>
     </div>
-    <script type="module" src="main.js"></script>
+    <script type="module" src="landing.js"></script>
   </body>
 </html>

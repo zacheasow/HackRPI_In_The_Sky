@@ -14,7 +14,7 @@ Shared rules for every coding agent on this repo (Cursor, Freebuff, Claude Code,
 - `public/physics.js`: pure sim logic. No DOM access. ALL tunable constants live in one commented `CONFIG` object at the top. Seeded RNG only, never `Math.random` in the sim.
 - `public/plane.js`: shape -> physical parameters (wing area, AR, mass, CG, AC, static margin, tail, inertia).
 - `public/render.js`: side-view flight, trail, wind streaks.
-- `public/main.js`: UI wiring. `public/index.html`, `public/style.css`: layout and theme.
+- `public/main.js`: UI wiring. `public/sim.html`, `public/style.css`: layout and theme. `public/index.html`: landing page.
 - Planned: `public/editor.js` (draggable shape editor), `public/api.js` (fetch wrappers), `server/coach.js` (Gemini), `server/db.js` (MongoDB Atlas).
 - `tests/`: plain Node scripts run by `npm test`.
 

@@ -208,6 +208,23 @@ export class FlightView {
     this.raf = requestAnimationFrame(loop);
   }
 
+  showFinished(result) {
+    this.stop();
+    this.viewX = null;
+    this.viewY = null;
+    const duration = Math.max(result.flightTime, 0.01);
+    this.scene = {
+      samples: result.samples,
+      time: duration,
+      duration,
+      distance: result.distance,
+      bodyLength: result.plane.bodyLength,
+      live: true,
+      wind: result.wind,
+    };
+    this.redraw();
+  }
+
   redraw() {
     if (!this.scene || !this.ctx) return;
     const ctx = this.ctx;
