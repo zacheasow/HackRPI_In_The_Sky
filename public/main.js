@@ -1,6 +1,5 @@
 import { diagnose } from "./diagnosis.js";
 import { clampShape, initEditor } from "./editor.js";
-import { initFold } from "./fold.js";
 import { SHAPE_LIMITS, defaultLaunch, defaultPlane, defaultShape, derivePlane } from "./plane.js";
 import { CONFIG, resolveWind, simulate } from "./physics.js";
 import { FlightView } from "./render.js";
@@ -102,7 +101,7 @@ function syncLabels() {
   for (const field of SHAPE_FIELDS) {
     const input = document.querySelector(`#shape-${field.key}`);
     const output = document.querySelector(`#shape-${field.key}-out`);
-    output.textContent = (Number(input.value) / field.scale).toFixed(field.digits);
+    output.textContent = Number(input.value).toFixed(field.digits);
   }
 }
 
@@ -117,6 +116,9 @@ function showReadouts(plane) {
     ["AC", `${(plane.neutralPoint * 100).toFixed(2)} cm`],
     ["Static margin", marginText, marginPct >= 0 ? "good" : "bad"],
   ];
+
+  const summary = document.querySelector("#stability-summary");
+  if (summary) summary.textContent = `Margin ${marginText}, ${marginPct >= 0 ? "stable" : "unstable"}`;
 
   readoutList.replaceChildren(
     ...rows.map(([label, value, tone]) => {
@@ -199,7 +201,7 @@ function showHistory() {
       text.textContent = `${flight.distance.toFixed(2)} m · ${flight.flightTime.toFixed(2)} s · ${flight.windLabel} · ${flight.headline}`;
       const load = document.createElement("button");
       load.type = "button";
-      load.className = "ghost";
+      load.className = "text";
       load.dataset.load = String(index);
       load.textContent = "Load";
       item.append(text, load);
@@ -340,6 +342,27 @@ document.querySelector("#wind-new-seed").addEventListener("click", () => {
   refresh();
 });
 
+document.querySelectorAll(".control-body details").forEach((details) => {
+  details.addEventListener("toggle", () => {
+    if (!details.open) return;
+    const extra = details.querySelector(".readouts");
+    if (extra) extra.scrollIntoView({ block: "nearest" });
+  });
+});
+
+document.querySelectorAll("[data-tab]").forEach((button) => {
+  button.addEventListener("click", () => {
+    const name = button.dataset.tab;
+    document.querySelectorAll("[data-tab]").forEach((other) => {
+      const on = other === button;
+      other.setAttribute("aria-selected", String(on));
+      other.tabIndex = on ? 0 : -1;
+    });
+    document.querySelector("#tab-results").hidden = name !== "results";
+    document.querySelector("#tab-history").hidden = name !== "history";
+  });
+});
+
 buildShapeSliders();
 applyWindDefaults();
 editor = initEditor(document.querySelector("#editor"), readShape, (next) => {
@@ -350,4 +373,3 @@ refresh();
 showBest();
 showHistory();
 view.resize();
-initFold(document.querySelector("#fold-panel"), readShape);

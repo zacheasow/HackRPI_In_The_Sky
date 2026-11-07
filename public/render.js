@@ -5,9 +5,31 @@
 import { windVelocity } from "./physics.js";
 
 const PAPER = "#f7f4ee";
-const INK = "#1d4e73";
-const TRAIL = "#ffffff";
-const TRAIL_SHADOW = "#e07a3d";
+
+// Three parallax layers. Far is smaller and fainter; each cloud is several overlapping puffs.
+const CLOUD_LAYERS = [
+  {
+    speed: 8,
+    alpha: 0.34,
+    scale: 0.5,
+    y: 0.13,
+    clouds: [0.08, 0.42, 0.78],
+  },
+  {
+    speed: 16,
+    alpha: 0.55,
+    scale: 0.82,
+    y: 0.24,
+    clouds: [0.18, 0.55, 0.88],
+  },
+  {
+    speed: 28,
+    alpha: 0.72,
+    scale: 1.15,
+    y: 0.36,
+    clouds: [0.05, 0.36, 0.7],
+  },
+];
 
 function lerp(a, b, t) {
   return a + (b - a) * t;
@@ -53,6 +75,9 @@ export class FlightView {
     this.dpr = 1;
     this.scene = null;
     this.onProgress = null;
+    this.viewX = null;
+    this.viewY = null;
+    this.reduced = window.matchMedia("(prefers-reduced-motion: reduce)");
 
     this.resize = this.resize.bind(this);
     this.observer = new ResizeObserver(this.resize);
@@ -78,6 +103,10 @@ export class FlightView {
     const idleAlready = this.scene && !this.scene.live;
     if (!idleAlready) this.stop();
     const time = idleAlready ? this.scene.time : 0;
+    if (!idleAlready) {
+      this.viewX = null;
+      this.viewY = null;
+    }
     const angle = (launch.angleDeg * Math.PI) / 180;
     this.scene = {
       samples: [
@@ -97,7 +126,7 @@ export class FlightView {
       live: false,
       wind: nextWind,
     };
-    if (nextWind.mode === "off") {
+    if (nextWind.mode === "off" || this.reduced.matches) {
       if (idleAlready) this.stop();
       this.redraw();
       return;
@@ -116,6 +145,8 @@ export class FlightView {
 
   play(result, onProgress) {
     this.stop();
+    this.viewX = null;
+    this.viewY = null;
     this.onProgress = onProgress || null;
     this.scene = {
       samples: result.samples,
@@ -163,47 +194,140 @@ export class FlightView {
     const width = this.canvas.width;
     const height = this.canvas.height;
     const pose = sampleAt(this.scene.samples, this.scene.time) || this.scene.samples[0];
-    const bounds = this.boundsFor(this.scene, pose);
+    const bounds = this.followBounds(pose);
+    const driftTime = this.reduced.matches ? 0 : this.scene.time || 0;
 
     ctx.clearRect(0, 0, width, height);
-    this.drawSky(ctx, width, height);
+    this.drawSky(ctx, width, height, driftTime);
     const wind = this.scene.wind || { mode: "off", steady: 0, phases: [0, 0, 0, 0] };
     const velocity = windVelocity(wind, this.scene.time || 0);
-    this.drawWindStreaks(ctx, width, height, velocity, this.scene.time || 0);
+    this.drawWindStreaks(ctx, width, height, velocity, driftTime);
     const camera = this.camera(bounds, width, height);
     this.drawGround(ctx, camera, bounds);
     this.drawTrail(ctx, camera, this.scene.samples, this.scene.time);
     if (pose) this.drawPlane(ctx, camera, pose, this.scene.bodyLength);
-    this.drawBadge(ctx, width, pose ? pose.x : 0, this.scene.live);
-    this.drawWindLabel(ctx, velocity.x);
+    this.drawCaption(ctx, width, pose ? pose.x : 0, this.scene.live, velocity.x);
+  }
+
+  followBounds(pose) {
+    const x = pose ? pose.x : 0;
+    const y = pose ? pose.y : 1.5;
+    const targetX = Math.max(-1.4, x - 2.6);
+    const targetY = Math.max(3.4, y + 1.15);
+    if (this.viewX == null || this.reduced.matches) {
+      this.viewX = targetX;
+      this.viewY = targetY;
+    } else {
+      this.viewX += (targetX - this.viewX) * 0.08;
+      this.viewY += (targetY - this.viewY) * 0.08;
+    }
+    return {
+      minX: this.viewX,
+      maxX: this.viewX + 9,
+      maxY: this.viewY,
+    };
+  }
+
+  camera(bounds, width, height) {
+    const worldW = Math.max(1, bounds.maxX - bounds.minX);
+    const groundBand = Math.max(height * 0.18, 56 * this.dpr);
+    const topPad = height * 0.06;
+    const sidePad = width * 0.04;
+    const scaleX = (width - sidePad * 2) / worldW;
+    const scaleY = (height - groundBand - topPad) / Math.max(bounds.maxY, 0.5);
+    const scale = Math.max(1, Math.min(scaleX, scaleY));
+    const offsetX = sidePad - bounds.minX * scale;
+    const offsetY = height - groundBand;
+    return {
+      scale,
+      offsetX,
+      toX: (x) => offsetX + x * scale,
+      toY: (y) => offsetY - y * scale,
+    };
+  }
+
+  drawSky(ctx, width, height, time) {
+    const sky = ctx.createLinearGradient(0, 0, 0, height);
+    sky.addColorStop(0, "#6ea8c9");
+    sky.addColorStop(0.42, "#b7d7ea");
+    sky.addColorStop(0.72, "#e7f0e4");
+    sky.addColorStop(1, "#f3e6d4");
+    ctx.fillStyle = sky;
+    ctx.fillRect(0, 0, width, height);
+
+    const sunX = width * 0.78;
+    const sunY = height * 0.14;
+    const sun = ctx.createRadialGradient(sunX, sunY, 0, sunX, sunY, width * 0.22);
+    sun.addColorStop(0, "rgba(255, 236, 196, 0.9)");
+    sun.addColorStop(0.35, "rgba(255, 220, 160, 0.28)");
+    sun.addColorStop(1, "rgba(255, 220, 160, 0)");
+    ctx.fillStyle = sun;
+    ctx.fillRect(0, 0, width, height);
+
+    const haze = ctx.createLinearGradient(0, height * 0.5, 0, height * 0.86);
+    haze.addColorStop(0, "rgba(243, 230, 212, 0)");
+    haze.addColorStop(1, "rgba(243, 230, 212, 0.55)");
+    ctx.fillStyle = haze;
+    ctx.fillRect(0, height * 0.5, width, height * 0.36);
+
+    for (const layer of CLOUD_LAYERS) {
+      const drift = (time * layer.speed * this.dpr) % (width + 1);
+      for (const origin of layer.clouds) {
+        const x = ((origin * width - drift) % width + width) % width;
+        this.drawCloud(ctx, x, height * layer.y, layer.scale, layer.alpha);
+        this.drawCloud(ctx, x - width, height * layer.y, layer.scale, layer.alpha);
+      }
+    }
+  }
+
+  drawCloud(ctx, x, y, scale, alpha) {
+    const d = this.dpr * scale;
+    const blobs = [
+      [0, 10, 78, 26, "rgba(186, 198, 206, 0.45)"],
+      [-48, 2, 42, 24, "rgba(255,255,255,0.72)"],
+      [6, -8, 58, 28, "rgba(255,255,255,0.88)"],
+      [52, 0, 36, 20, "rgba(255,255,255,0.7)"],
+      [24, 8, 50, 18, "rgba(214, 224, 230, 0.4)"],
+    ];
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.filter = `blur(${5 * this.dpr}px)`;
+    ctx.globalAlpha = alpha;
+    for (const [bx, by, rx, ry, fill] of blobs) {
+      ctx.fillStyle = fill;
+      ctx.beginPath();
+      ctx.ellipse(bx * d, by * d, rx * d, ry * d, 0, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.restore();
   }
 
   drawWindStreaks(ctx, width, height, velocity, time) {
     const speed = Math.hypot(velocity.x, velocity.y);
-    if (speed < 0.05) return;
+    if (speed < 0.15) return;
     const dx = velocity.x / speed;
     const dy = -velocity.y / speed;
-    const opacity = Math.min(0.85, 0.16 + speed * 0.16);
-    const length = (8 + speed * 14) * this.dpr;
-    const travel = time * (22 + speed * 26) * this.dpr;
-    const skyBottom = height * 0.78;
+    const length = (18 + speed * 10) * this.dpr;
+    const travel = time * (14 + speed * 10) * this.dpr;
+    const skyBottom = height * 0.72;
+    const alpha = Math.min(0.32, 0.12 + speed * 0.05);
 
     ctx.save();
-    ctx.strokeStyle = `rgba(255,255,255,${opacity.toFixed(3)})`;
-    ctx.lineWidth = Math.max(1, 1.4 * this.dpr);
+    ctx.lineWidth = Math.max(1, this.dpr);
     ctx.lineCap = "round";
-    const cols = 6;
-    const rows = 4;
-    for (let i = 0; i < cols; i += 1) {
-      for (let j = 0; j < rows; j += 1) {
-        const originX = ((i + 0.25) / cols) * width;
-        const originY = ((j + 0.4) / rows) * skyBottom;
+    for (let i = 0; i < 5; i += 1) {
+      for (let j = 0; j < 3; j += 1) {
+        const originX = ((i + 0.2) / 5) * width;
+        const originY = ((j + 0.35) / 3) * skyBottom;
         const xPeriod = width + length;
-        const yPeriod = skyBottom + length;
         let x = originX + dx * travel;
-        let y = originY + dy * travel;
-        x = ((x % xPeriod) + xPeriod) % xPeriod - length * 0.5;
-        y = ((y % yPeriod) + yPeriod) % yPeriod;
+        let y = originY + dy * travel * 0.35;
+        x = ((x % xPeriod) + xPeriod) % xPeriod;
+        y = ((y % skyBottom) + skyBottom) % skyBottom;
+        const fade = ctx.createLinearGradient(x, y, x - dx * length, y - dy * length);
+        fade.addColorStop(0, `rgba(70, 98, 112, ${alpha.toFixed(3)})`);
+        fade.addColorStop(1, "rgba(70, 98, 112, 0)");
+        ctx.strokeStyle = fade;
         ctx.beginPath();
         ctx.moveTo(x, y);
         ctx.lineTo(x - dx * length, y - dy * length);
@@ -213,266 +337,126 @@ export class FlightView {
     ctx.restore();
   }
 
-  drawWindLabel(ctx, windX) {
-    const calm = Math.abs(windX) < 0.3;
-    const text = calm
-      ? "Wind: calm"
-      : `Wind: ${Math.abs(windX).toFixed(1)} m/s ${windX > 0 ? "tailwind" : "headwind"}`;
-    const dir = calm ? 0 : Math.sign(windX);
-    const arrow = 16 * this.dpr;
-    ctx.save();
-    ctx.font = `600 ${15 * this.dpr}px "Segoe UI", sans-serif`;
-    const padX = 14 * this.dpr;
-    const textW = ctx.measureText(text).width;
-    const boxW = textW + padX * 2 + (dir ? arrow : 0);
-    const boxH = 34 * this.dpr;
-    const x = 16 * this.dpr;
-    const y = 16 * this.dpr;
-    ctx.fillStyle = "rgba(255,255,255,0.82)";
-    ctx.strokeStyle = "rgba(255,255,255,0.95)";
-    ctx.lineWidth = this.dpr;
-    this.roundRect(ctx, x, y, boxW, boxH, 12 * this.dpr);
-    ctx.fill();
-    ctx.stroke();
-    ctx.fillStyle = INK;
-    ctx.strokeStyle = INK;
-    ctx.lineWidth = 1.6 * this.dpr;
-    ctx.lineCap = "round";
-    ctx.lineJoin = "round";
-    let textX = x + padX;
-    if (dir) {
-      const ax = x + padX + arrow * 0.45;
-      const ay = y + boxH / 2;
-      ctx.beginPath();
-      ctx.moveTo(ax - dir * arrow * 0.35, ay);
-      ctx.lineTo(ax + dir * arrow * 0.4, ay);
-      ctx.moveTo(ax + dir * arrow * 0.1, ay - arrow * 0.28);
-      ctx.lineTo(ax + dir * arrow * 0.4, ay);
-      ctx.lineTo(ax + dir * arrow * 0.1, ay + arrow * 0.28);
-      ctx.stroke();
-      textX += arrow;
-    }
-    ctx.textAlign = "left";
-    ctx.textBaseline = "middle";
-    ctx.fillText(text, textX, y + boxH / 2 + this.dpr);
-    ctx.restore();
-  }
-
-  boundsFor(scene, pose) {
-    let minX = -0.6;
-    let maxX = 6;
-    let maxY = 2.2;
-    const future = scene.live ? scene.samples : [pose];
-    for (const sample of future) {
-      if (!sample) continue;
-      minX = Math.min(minX, sample.x);
-      maxX = Math.max(maxX, sample.x);
-      maxY = Math.max(maxY, sample.y);
-    }
-    if (pose) maxY = Math.max(maxY, pose.y);
-    return {
-      minX: minX - 0.4,
-      maxX: maxX + Math.max(0.8, maxX * 0.04),
-      maxY: maxY + 0.35,
-    };
-  }
-
-  camera(bounds, width, height) {
-    const worldW = Math.max(1, bounds.maxX - bounds.minX);
-    const groundBand = Math.max(height * 0.16, 48 * this.dpr);
-    const topPad = height * 0.08;
-    const sidePad = width * 0.05;
-    const scaleX = (width - sidePad * 2) / worldW;
-    const scaleY = (height - groundBand - topPad) / Math.max(bounds.maxY, 0.5);
-    const scale = Math.max(1, Math.min(scaleX, scaleY));
-    const offsetX = sidePad - bounds.minX * scale;
-    const offsetY = height - groundBand;
-    return {
-      scale,
-      toX: (x) => offsetX + x * scale,
-      toY: (y) => offsetY - y * scale,
-    };
-  }
-
-  drawSky(ctx, width, height) {
-    const sky = ctx.createLinearGradient(0, 0, 0, height);
-    sky.addColorStop(0, "#6eb6e4");
-    sky.addColorStop(0.55, "#b7def5");
-    sky.addColorStop(1, "#e7f5fb");
-    ctx.fillStyle = sky;
-    ctx.fillRect(0, 0, width, height);
-
-    ctx.save();
-    ctx.globalAlpha = 0.55;
-    const clouds = [
-      [0.18, 0.22, 0.16],
-      [0.62, 0.16, 0.2],
-      [0.84, 0.3, 0.12],
-      [0.4, 0.38, 0.1],
-    ];
-    for (const [cx, cy, r] of clouds) {
-      this.puff(ctx, cx * width, cy * height, r * width);
-    }
-    ctx.restore();
-  }
-
-  puff(ctx, x, y, radius) {
-    ctx.fillStyle = "rgba(255,255,255,0.85)";
-    ctx.beginPath();
-    ctx.ellipse(x, y, radius, radius * 0.62, 0, 0, Math.PI * 2);
-    ctx.ellipse(x - radius * 0.45, y + radius * 0.08, radius * 0.62, radius * 0.42, 0, 0, Math.PI * 2);
-    ctx.ellipse(x + radius * 0.48, y + radius * 0.06, radius * 0.55, radius * 0.38, 0, 0, Math.PI * 2);
-    ctx.fill();
-  }
-
   drawGround(ctx, camera, bounds) {
-    const y0 = camera.toY(0);
-    const bottom = this.canvas.height;
     const width = this.canvas.width;
+    const height = this.canvas.height;
+    const hillAt = (worldX) => Math.exp(-((worldX + 0.2) ** 2) / 3.2) * 0.42;
 
-    const ground = ctx.createLinearGradient(0, y0, 0, bottom);
-    ground.addColorStop(0, "#b7d89a");
-    ground.addColorStop(0.4, "#7eae62");
-    ground.addColorStop(1, "#5d8d49");
-    ctx.fillStyle = ground;
-    ctx.fillRect(0, y0, width, Math.max(0, bottom - y0));
-
-    ctx.strokeStyle = "rgba(255,255,255,0.7)";
-    ctx.lineWidth = Math.max(2, this.dpr);
     ctx.beginPath();
-    ctx.moveTo(0, y0);
-    ctx.lineTo(width, y0);
+    ctx.moveTo(0, height);
+    for (let px = 0; px <= width; px += 6) {
+      const worldX = (px - camera.offsetX) / camera.scale;
+      ctx.lineTo(px, camera.toY(hillAt(worldX)));
+    }
+    ctx.lineTo(width, height);
+    ctx.closePath();
+    const fill = ctx.createLinearGradient(0, camera.toY(0.5), 0, height);
+    fill.addColorStop(0, "#c5d7a8");
+    fill.addColorStop(0.45, "#8eae72");
+    fill.addColorStop(1, "#6d8f58");
+    ctx.fillStyle = fill;
+    ctx.fill();
+
+    ctx.beginPath();
+    for (let px = 0; px <= width; px += 6) {
+      const worldX = (px - camera.offsetX) / camera.scale;
+      const y = camera.toY(hillAt(worldX));
+      if (px === 0) ctx.moveTo(px, y);
+      else ctx.lineTo(px, y);
+    }
+    ctx.strokeStyle = "rgba(255,255,255,0.45)";
+    ctx.lineWidth = Math.max(1, this.dpr);
     ctx.stroke();
 
-    ctx.fillStyle = "rgba(29, 78, 115, 0.55)";
-    ctx.font = `${12 * this.dpr}px "Segoe UI", sans-serif`;
+    ctx.fillStyle = "rgba(36, 48, 39, 0.45)";
+    ctx.font = `${12 * this.dpr}px "Iowan Old Style", Palatino, Georgia, serif`;
     ctx.textAlign = "center";
-    const span = bounds.maxX - bounds.minX;
-    const step = span > 40 ? 5 : span > 20 ? 2 : 1;
-    const start = Math.ceil(bounds.minX / step) * step;
-    for (let meter = start; meter <= bounds.maxX; meter += step) {
+    const start = Math.ceil(bounds.minX);
+    for (let meter = start; meter <= bounds.maxX; meter += 1) {
+      if (meter <= 0) continue;
       const x = camera.toX(meter);
-      ctx.beginPath();
-      ctx.moveTo(x, y0);
-      ctx.lineTo(x, y0 + 8 * this.dpr);
-      ctx.strokeStyle = "rgba(255,255,255,0.45)";
-      ctx.stroke();
-      if (meter > 0) ctx.fillText(String(meter), x, y0 + 22 * this.dpr);
+      const y = camera.toY(hillAt(meter));
+      ctx.fillText(String(meter), x, y + 16 * this.dpr);
     }
   }
 
   drawTrail(ctx, camera, samples, time) {
     const visible = samples.filter((sample) => sample.t <= time + 1e-6 && sample.y >= -0.05);
     if (visible.length < 2) return;
-
+    ctx.save();
     ctx.lineCap = "round";
-    ctx.lineJoin = "round";
-    ctx.lineWidth = 5 * this.dpr;
-    ctx.strokeStyle = TRAIL_SHADOW;
-    ctx.globalAlpha = 0.35;
-    ctx.beginPath();
-    visible.forEach((sample, index) => {
-      const x = camera.toX(sample.x);
-      const y = camera.toY(sample.y);
-      if (index === 0) ctx.moveTo(x, y);
-      else ctx.lineTo(x, y);
-    });
-    ctx.stroke();
-
-    ctx.globalAlpha = 0.95;
-    ctx.lineWidth = 2.5 * this.dpr;
-    ctx.strokeStyle = TRAIL;
-    ctx.stroke();
-    ctx.globalAlpha = 1;
+    ctx.lineWidth = Math.max(1.25, 1.6 * this.dpr);
+    for (let i = 1; i < visible.length; i += 1) {
+      const a = visible[i - 1];
+      const b = visible[i];
+      const fade = i / (visible.length - 1);
+      ctx.strokeStyle = `rgba(255,255,255,${(0.08 + fade * 0.55).toFixed(3)})`;
+      ctx.beginPath();
+      ctx.moveTo(camera.toX(a.x), camera.toY(a.y));
+      ctx.lineTo(camera.toX(b.x), camera.toY(b.y));
+      ctx.stroke();
+    }
+    ctx.restore();
   }
 
-  drawPlane(ctx, camera, pose, bodyLength) {
+  drawPlane(ctx, camera, pose) {
     const x = camera.toX(pose.x);
     const y = camera.toY(pose.y);
     const altitude = Math.max(0, pose.y);
-    const shadowScale = 1 / (1 + altitude * 0.35);
+    const shadowScale = 1 / (1 + altitude * 0.45);
+    const drawScale = Math.max(camera.scale, (34 * this.dpr) / 0.22);
 
+    const groundY = Math.exp(-((pose.x + 0.2) ** 2) / 3.2) * 0.42;
     ctx.save();
-    ctx.translate(camera.toX(pose.x), camera.toY(0) + 2 * this.dpr);
-    ctx.scale(shadowScale, shadowScale * 0.35);
-    ctx.fillStyle = "rgba(40, 70, 50, 0.22)";
+    ctx.translate(camera.toX(pose.x), camera.toY(groundY) + 3 * this.dpr);
+    ctx.scale(shadowScale, shadowScale * 0.28);
+    ctx.fillStyle = "rgba(48, 64, 42, 0.18)";
     ctx.beginPath();
-    ctx.ellipse(0, 0, 28 * this.dpr, 10 * this.dpr, 0, 0, Math.PI * 2);
+    ctx.ellipse(0, 0, 18 * this.dpr, 8 * this.dpr, 0, 0, Math.PI * 2);
     ctx.fill();
     ctx.restore();
-
-    const minPixels = 64 * this.dpr;
-    const natural = Math.max(bodyLength, 0.2) * camera.scale;
-    const pxPerMeter = Math.max(camera.scale, minPixels / Math.max(bodyLength, 0.2));
-    // Keep the airplane readable without stretching a short hop to fill the sky.
-    const drawScale = natural < minPixels ? pxPerMeter : camera.scale;
 
     ctx.save();
     ctx.translate(x, y);
     ctx.scale(drawScale, -drawScale);
     ctx.rotate(pose.theta);
     ctx.lineJoin = "round";
-    ctx.lineWidth = 1.5 / drawScale;
-
+    ctx.lineWidth = 1.1 / drawScale;
     ctx.beginPath();
-    ctx.moveTo(0.17, 0);
-    ctx.lineTo(0.03, 0.014);
-    ctx.lineTo(-0.05, 0.02);
-    ctx.lineTo(-0.13, 0.062);
-    ctx.lineTo(-0.155, 0.02);
-    ctx.lineTo(-0.09, 0.01);
-    ctx.lineTo(-0.02, -0.016);
+    ctx.moveTo(0.11, 0);
+    ctx.lineTo(0.02, 0.012);
+    ctx.lineTo(-0.03, 0.016);
+    ctx.lineTo(-0.09, 0.048);
+    ctx.lineTo(-0.108, 0.014);
+    ctx.lineTo(-0.05, 0.006);
+    ctx.lineTo(-0.01, -0.012);
     ctx.closePath();
     ctx.fillStyle = PAPER;
-    ctx.strokeStyle = "rgba(29, 78, 115, 0.45)";
+    ctx.strokeStyle = "rgba(36, 48, 39, 0.35)";
     ctx.fill();
     ctx.stroke();
-
     ctx.beginPath();
-    ctx.moveTo(0.12, 0.002);
-    ctx.lineTo(-0.08, 0.008);
-    ctx.strokeStyle = "rgba(29, 78, 115, 0.25)";
-    ctx.stroke();
-
-    ctx.beginPath();
-    ctx.moveTo(0.16, 0);
-    ctx.lineTo(0.1, 0);
-    ctx.strokeStyle = "#e07a3d";
-    ctx.lineWidth = 2.2 / drawScale;
+    ctx.moveTo(0.08, 0.001);
+    ctx.lineTo(-0.06, 0.006);
+    ctx.strokeStyle = "rgba(36, 48, 39, 0.22)";
     ctx.stroke();
     ctx.restore();
   }
 
-  drawBadge(ctx, width, xPosition, live) {
-    const label = live ? formatMeters(xPosition) : "Ready";
+  drawCaption(ctx, width, xPosition, live, windX) {
+    const calm = Math.abs(windX) < 0.3;
+    const wind = calm
+      ? "Calm"
+      : `${Math.abs(windX).toFixed(1)} m/s ${windX > 0 ? "tailwind" : "headwind"}`;
+    const place = live ? formatMeters(Math.max(0, xPosition)) : "Ready";
     ctx.save();
-    ctx.font = `600 ${16 * this.dpr}px "Segoe UI", sans-serif`;
-    const padX = 14 * this.dpr;
-    const textW = ctx.measureText(label).width;
-    const boxW = textW + padX * 2;
-    const boxH = 34 * this.dpr;
-    const x = width - boxW - 16 * this.dpr;
-    const y = 16 * this.dpr;
-    ctx.fillStyle = "rgba(255,255,255,0.82)";
-    ctx.strokeStyle = "rgba(255,255,255,0.95)";
-    ctx.lineWidth = this.dpr;
-    this.roundRect(ctx, x, y, boxW, boxH, 12 * this.dpr);
-    ctx.fill();
-    ctx.stroke();
-    ctx.fillStyle = INK;
+    ctx.font = `${14 * this.dpr}px "Iowan Old Style", Palatino, Georgia, serif`;
+    ctx.fillStyle = "rgba(36, 48, 39, 0.72)";
+    ctx.textBaseline = "top";
     ctx.textAlign = "left";
-    ctx.textBaseline = "middle";
-    ctx.fillText(label, x + padX, y + boxH / 2 + this.dpr);
+    ctx.fillText(wind, 16 * this.dpr, 14 * this.dpr);
+    ctx.textAlign = "right";
+    ctx.fillText(place, width - 16 * this.dpr, 14 * this.dpr);
     ctx.restore();
-  }
-
-  roundRect(ctx, x, y, w, h, r) {
-    ctx.beginPath();
-    ctx.moveTo(x + r, y);
-    ctx.arcTo(x + w, y, x + w, y + h, r);
-    ctx.arcTo(x + w, y + h, x, y + h, r);
-    ctx.arcTo(x, y + h, x, y, r);
-    ctx.arcTo(x, y, x + w, y, r);
-    ctx.closePath();
   }
 }

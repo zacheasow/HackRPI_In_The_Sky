@@ -15,7 +15,7 @@ Shared rules for every coding agent on this repo (Cursor, Freebuff, Claude Code,
 - `public/plane.js`: shape -> physical parameters (wing area, AR, mass, CG, AC, static margin, tail, inertia).
 - `public/render.js`: side-view flight, trail, wind streaks.
 - `public/main.js`: UI wiring. `public/index.html`, `public/style.css`: layout and theme.
-- Planned: `public/editor.js` (draggable shape editor), `public/api.js` (fetch wrappers), `public/fold.js` + `public/fold.css` (anime.js folding animation), `server/coach.js` (Gemini), `server/db.js` (MongoDB Atlas).
+- Planned: `public/editor.js` (draggable shape editor), `public/api.js` (fetch wrappers), `server/coach.js` (Gemini), `server/db.js` (MongoDB Atlas).
 - `tests/`: plain Node scripts run by `npm test`.
 
 ## Hard rules
@@ -39,9 +39,11 @@ Shared rules for every coding agent on this repo (Cursor, Freebuff, Claude Code,
 6. Gemini coach endpoint + Coach panel
 7. MongoDB leaderboard with localStorage fallback
 8. Auto-tune (random search + hill climbing)
-Side track: anime.js 3D folding animation in its own files, on its own branch.
+
+## Parked / future ideas
+- A 3D paper-folding animation (anime.js) was removed from the app. If it comes back, keep it in its own files and off the flight page.
 
 ## Working in parallel
 - Cursor builds the main stages on `main`.
-- Freebuff takes side work in its own git worktree/branch (folding animation, browser click-through testing, code review, README and deploy notes). It must not edit `physics.js` or `plane.js` while a main stage is in progress.
+- Freebuff takes side work in its own git worktree/branch (browser click-through testing, code review, README and deploy notes). It must not edit `physics.js` or `plane.js` while a main stage is in progress.
 - Merge side branches only after `main` passes `npm test`.
