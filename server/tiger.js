@@ -266,6 +266,39 @@ async function saveTiger(flight) {
   }
 }
 
+function dropLocal(flightId) {
+  const index = localFlights.findIndex((item) => item.flight_id === flightId);
+  if (index < 0) return false;
+  localFlights.splice(index, 1);
+  return true;
+}
+
+async function deleteTiger(flightId) {
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    await client.query("DELETE FROM flight_telemetry WHERE flight_id = $1", [flightId]);
+    const result = await client.query("DELETE FROM flights WHERE flight_id = $1", [flightId]);
+    await client.query("COMMIT");
+    return result.rowCount > 0;
+  } catch (error) {
+    await client.query("ROLLBACK").catch(() => {});
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
+export async function deleteFlight(flightId) {
+  if (mode !== "tiger" || !pool) return dropLocal(flightId);
+  try {
+    return await deleteTiger(flightId);
+  } catch {
+    useLocal("unavailable");
+    return dropLocal(flightId);
+  }
+}
+
 export async function saveFlight(flight) {
   if (mode !== "tiger" || !pool) return saveLocal(flight);
   try {

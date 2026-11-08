@@ -34,6 +34,15 @@ function wait(ms) {
   return new Promise((resolve) => window.setTimeout(resolve, ms));
 }
 
+function replayFlyTitle() {
+  if (prefersReducedMotion()) return;
+  for (const node of document.querySelectorAll(".fly-title h1, .fly-title .lede")) {
+    node.style.animation = "none";
+    void node.offsetWidth;
+    node.style.animation = "";
+  }
+}
+
 function isFlyHref(href) {
   try {
     const url = new URL(href, window.location.href);
@@ -298,6 +307,7 @@ export async function enterFly(homeView) {
     document.body.classList.remove("entering-fly", "home");
     document.body.replaceChildren(finalPage || simPanel);
     shell.remove();
+    replayFlyTitle();
     mainMod.bootFlySky();
     simView.setPlaneVisible(true);
     simView.resize();

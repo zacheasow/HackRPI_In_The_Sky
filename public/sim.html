@@ -10,30 +10,27 @@
     <div class="page fly-page">
       <canvas id="fly-sky" class="fly-sky" width="960" height="640" aria-hidden="true"></canvas>
       <header class="top">
+        <div class="fly-title">
+          <h1>Aerogami</h1>
+          <p class="lede">Shape the wing, then throw it from the hillside.</p>
+        </div>
         <nav class="nav">
           <a href="/">Home</a>
           <a href="/sim.html" aria-current="page">Fly</a>
           <a href="/leaderboard.html">Leaderboard</a>
         </nav>
-        <h1>Aerogami</h1>
-        <p class="lede">Shape the wing, then throw it from the hillside.</p>
       </header>
 
       <main>
         <section class="stage" aria-label="Flight">
           <canvas id="flight" width="960" height="640">Side view of the paper airplane flight</canvas>
-          <p id="compare-legend" class="compare-legend" hidden></p>
-          <div id="replay-charts" class="replay-charts" hidden>
-            <canvas id="chart-altitude" aria-label="Altitude versus time"></canvas>
-            <canvas id="chart-speed" aria-label="Speed versus time"></canvas>
-            <canvas id="chart-alpha" aria-label="Angle of attack versus time"></canvas>
-          </div>
           <div class="report">
             <div class="tabs" role="tablist" aria-label="Flight notes">
               <button type="button" role="tab" data-tab="results" aria-selected="true" aria-controls="tab-results">Results</button>
               <button type="button" role="tab" data-tab="history" aria-selected="false" aria-controls="tab-history" tabindex="-1">History</button>
               <button type="button" role="tab" data-tab="coach" aria-selected="false" aria-controls="tab-coach" tabindex="-1">Coach</button>
               <button type="button" role="tab" data-tab="flights" aria-selected="false" aria-controls="tab-flights" tabindex="-1">Flights</button>
+              <button type="button" role="tab" data-tab="telemetry" aria-selected="false" aria-controls="tab-telemetry" tabindex="-1">Telemetry</button>
             </div>
 
             <div id="tab-results" role="tabpanel">
@@ -74,23 +71,47 @@
 
             <div id="tab-flights" role="tabpanel" hidden>
               <p id="telemetry-badge" class="note" hidden>telemetry: local mode</p>
-              <div class="history-head">
+              <div class="flight-toolbar">
+                <button id="compare-go" type="button" class="quiet" disabled>Compare</button>
+                <div id="replay-controls" class="replay-controls">
+                  <button id="replay-play" type="button" class="quiet" disabled>Play</button>
+                  <input id="replay-scrub" type="range" min="0" max="1000" value="0" aria-label="Replay time" disabled />
+                  <div class="choice" id="replay-speeds">
+                    <button type="button" class="quiet" data-speed="0.25">0.25x</button>
+                    <button type="button" class="quiet" data-speed="0.5">0.5x</button>
+                    <button type="button" class="quiet" data-speed="1" aria-pressed="true">1x</button>
+                    <button type="button" class="quiet" data-speed="2">2x</button>
+                  </div>
+                </div>
+                <button id="flights-clear" type="button" class="quiet" disabled>Clear all</button>
                 <button id="flights-refresh" type="button" class="quiet">Refresh</button>
               </div>
-              <ul id="flight-list" class="history"></ul>
-              <button id="compare-go" type="button" class="quiet" hidden>Compare</button>
+              <p id="flight-note" class="note" hidden></p>
+              <ul id="flight-list" class="history flight-list"></ul>
+            </div>
+
+            <div id="tab-telemetry" role="tabpanel" hidden>
+              <div class="telemetry-head">
+                <h2 class="telemetry-title">Flight telemetry</h2>
+                <p id="compare-legend" class="compare-legend" hidden></p>
+              </div>
+              <p id="telemetry-status" class="note">Replay a flight or compare two in the Flights tab</p>
+              <div id="replay-charts" class="replay-charts" hidden>
+                <figure>
+                  <figcaption>Altitude (m)</figcaption>
+                  <canvas id="chart-altitude" aria-label="Altitude versus time"></canvas>
+                </figure>
+                <figure>
+                  <figcaption>Speed (m/s)</figcaption>
+                  <canvas id="chart-speed" aria-label="Speed versus time"></canvas>
+                </figure>
+                <figure>
+                  <figcaption>Angle of attack (°)</figcaption>
+                  <canvas id="chart-alpha" aria-label="Angle of attack versus time"></canvas>
+                </figure>
+              </div>
               <p id="compare-card" class="note" hidden></p>
               <button id="compare-coach" type="button" class="quiet" hidden>Ask the coach to compare</button>
-              <div id="replay-controls" class="replay-controls" hidden>
-                <button id="replay-play" type="button" class="quiet">Play</button>
-                <input id="replay-scrub" type="range" min="0" max="1000" value="0" aria-label="Replay time" />
-                <div class="choice" id="replay-speeds">
-                  <button type="button" class="quiet" data-speed="0.25">0.25x</button>
-                  <button type="button" class="quiet" data-speed="0.5">0.5x</button>
-                  <button type="button" class="quiet" data-speed="1" aria-pressed="true">1x</button>
-                  <button type="button" class="quiet" data-speed="2">2x</button>
-                </div>
-              </div>
             </div>
 
             <div id="tab-history" role="tabpanel" hidden>

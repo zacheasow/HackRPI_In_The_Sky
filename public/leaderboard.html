@@ -7,34 +7,46 @@
     <link rel="stylesheet" href="style.css" />
   </head>
   <body class="board">
+    <canvas id="home-sky" class="home-sky" width="960" height="640" aria-hidden="true"></canvas>
     <div class="page">
       <header class="top">
+        <div class="fly-title">
+          <h1>Leaderboard</h1>
+          <p id="board-note" class="lede">The farthest throws.</p>
+        </div>
         <nav class="nav">
           <a href="/">Home</a>
-          <a href="/sim.html">Fly</a>
+          <a href="/sim.html" data-enter-fly>Fly</a>
           <a href="/leaderboard.html" aria-current="page">Leaderboard</a>
         </nav>
-        <h1>Leaderboard</h1>
-        <p id="board-note" class="lede">The farthest throws.</p>
       </header>
       <main class="board-main">
         <div class="board-bar">
-          <button id="board-refresh" type="button" class="quiet">Refresh</button>
+          <button id="board-all" type="button" class="secondary" aria-pressed="false">Show all entries</button>
+          <button id="board-refresh" type="button" class="secondary">Refresh</button>
         </div>
-        <table class="board-table">
-          <thead>
-            <tr>
-              <th>Rank</th>
-              <th>Name</th>
-              <th>Distance</th>
-              <th>Wind</th>
-              <th>Date</th>
-            </tr>
-          </thead>
-          <tbody id="board-rows"></tbody>
-        </table>
-        <p id="board-empty" class="note" hidden>No flights yet.</p>
+        <div class="board-card controls">
+          <table class="board-table">
+            <thead>
+              <tr>
+                <th>Rank</th>
+                <th>Name</th>
+                <th>Distance</th>
+                <th>Wing span</th>
+                <th>Throw</th>
+                <th>Wind</th>
+                <th>Date</th>
+              </tr>
+            </thead>
+            <tbody id="board-rows"></tbody>
+          </table>
+          <p id="board-empty" class="note" hidden>No flights on the board yet. Throw one from the Fly page and save your name.</p>
+        </div>
       </main>
+      <footer class="site-foot">
+        <span>Built at HackRPI 2026</span>
+        <a href="https://github.com/zacheasow/HackRPI_In_The_Sky">GitHub</a>
+      </footer>
     </div>
     <script type="module" src="leaderboard.js"></script>
   </body>

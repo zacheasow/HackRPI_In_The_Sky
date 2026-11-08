@@ -5,8 +5,8 @@ import { fileURLToPath } from "url";
 import { prepareEntry, publicEntry, readLimit } from "./board.js";
 import { getCollection, ping } from "./db.js";
 import { askCoach } from "./coach.js";
-import { coachLimiter, designsLimiter, flightsLimiter } from "./limits.js";
-import { compareFlights, getTelemetry, listFlights, saveFlight, status as telemetryStatus } from "./tiger.js";
+import { coachLimiter, deleteLimiter, designsLimiter, flightsLimiter } from "./limits.js";
+import { compareFlights, deleteFlight, getTelemetry, listFlights, saveFlight, status as telemetryStatus } from "./tiger.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const { version } = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8"));
@@ -203,6 +203,30 @@ export function createApp(options = {}) {
       return;
     }
     res.json(series);
+  }));
+
+  function adminOk(req) {
+    const expected = process.env.ADMIN_TOKEN;
+    if (typeof expected !== "string" || !expected) return false;
+    return req.get("x-admin-token") === expected;
+  }
+
+  app.delete("/api/flights/:id", deleteLimiter, asyncRoute(async (req, res) => {
+    if (!adminOk(req)) {
+      res.status(403).json({ error: "Forbidden" });
+      return;
+    }
+    const flightId = String(req.params.id || "").trim().toLowerCase();
+    if (!FLIGHT_UUID.test(flightId)) {
+      res.status(400).json({ error: "Bad request" });
+      return;
+    }
+    const removed = await deleteFlight(flightId);
+    if (!removed) {
+      res.status(404).json({ error: "Not found" });
+      return;
+    }
+    res.json({ ok: true });
   }));
 
   app.post("/api/flights", express.json({ limit: "512kb" }), flightsLimiter, asyncRoute(async (req, res) => {

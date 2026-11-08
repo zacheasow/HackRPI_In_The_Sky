@@ -381,16 +381,18 @@ export function bootSim(options = {}) {
     return String(value ?? "").replace(/<[^>]*>/g, "").replace(/[<>]/g, "").trim().slice(0, 20);
   }
 
+  let redrawTelemetry = () => {};
+
   function selectTab(name) {
     document.querySelectorAll("[data-tab]").forEach((button) => {
       const on = button.dataset.tab === name;
       button.setAttribute("aria-selected", String(on));
       button.tabIndex = on ? 0 : -1;
     });
-    for (const id of ["results", "history", "coach", "flights"]) {
-      const panel = document.querySelector(`#tab-${id}`);
-      if (panel) panel.hidden = id !== name;
-    }
+    document.querySelectorAll(".report [role=tabpanel]").forEach((panel) => {
+      panel.hidden = panel.id !== `tab-${name}`;
+    });
+    if (name === "telemetry") requestAnimationFrame(() => redrawTelemetry());
   }
 
   const coachStatus = document.querySelector("#coach-status");
@@ -600,7 +602,14 @@ export function bootSim(options = {}) {
     });
   }
 
-  const replay = initReplay(view, { askCompare });
+  const replay = initReplay(view, {
+    askCompare,
+    showTab: selectTab,
+    resetView() {
+      view.showAmbient(defaultPlane());
+    },
+  });
+  redrawTelemetry = () => replay.redraw?.();
 
   document.querySelector("#launch").addEventListener("click", () => {
     stopTune();

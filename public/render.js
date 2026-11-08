@@ -93,7 +93,7 @@ const AMBIENT_SCROLL = 1.65; // m/s camera travel — scenery streams right-to-l
 
 function ambientPose(time, viewX = -1.5, alt = 1.85) {
   // Keep the plane in the open sky lane (right of the hero card).
-  const mid = viewX + 5.6;
+  const mid = viewX + 6.4;
   const bob = Math.sin(time * 0.85) * 0.08 + Math.sin(time * 0.37) * 0.03;
   const x = mid + Math.sin(time * 0.4) * 0.55;
   const base = Number.isFinite(alt) ? alt : 1.85;
@@ -137,6 +137,15 @@ export function paintPlaneSprite(ctx, x, y, theta, sizePx, dpr = 1) {
   ctx.lineTo(-0.06, 0.006);
   ctx.strokeStyle = "rgba(28, 38, 30, 0.4)";
   ctx.stroke();
+  ctx.save();
+  ctx.translate(-0.02, 0.016);
+  ctx.scale(1, -1);
+  ctx.fillStyle = "rgba(36, 48, 39, 0.42)";
+  ctx.font = `500 ${0.012}px "Iowan Old Style", Palatino, Georgia, serif`;
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.fillText("HackRPI", 0, 0);
+  ctx.restore();
   ctx.restore();
   void dpr;
 }
@@ -279,8 +288,8 @@ export class FlightView {
     if (!(camera.scale > 0) || !Number.isFinite(camera.offsetY)) return;
     const worldY = (camera.offsetY - canvasY) / camera.scale;
     if (!Number.isFinite(worldY)) return;
-    // Keep the plane clearly above the grass and below the top UI.
-    this.ambientAlt = Math.min(2.45, Math.max(1.35, worldY));
+    // Follow the open sky lane. The old 1.35–2.45 clamp parked the plane in the mountains on a tall phone.
+    this.ambientAlt = Math.min(3.15, Math.max(0.9, worldY));
     this.planeVisible = true;
     if (this.scene && this.ambient) {
       this.scene.samples = [ambientPose(this.scene.time || 0, this.viewX ?? -1.5, this.ambientAlt)];
@@ -354,6 +363,7 @@ export class FlightView {
   ambientPlanePx() {
     if (!this.ambient) return 52;
     const cssW = this.canvas.width / Math.max(this.dpr, 1);
+    if (cssW <= 860) return Math.min(110, cssW * 0.28);
     return Math.max(260, cssW * 0.44);
   }
 

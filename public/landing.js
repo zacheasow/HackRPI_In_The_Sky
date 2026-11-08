@@ -22,7 +22,8 @@ export function syncHomePlaneBand(view = homeView) {
     }
     return;
   }
-  const midCssY = laneRect.top + laneRect.height * 0.5 - skyRect.top;
+  const band = window.innerWidth <= 860 ? 0.22 : 0.68;
+  const midCssY = laneRect.top + laneRect.height * band - skyRect.top;
   const canvasY = (midCssY / skyRect.height) * sky.height;
   if (!Number.isFinite(canvasY)) {
     view.ambientAlt = 1.85;

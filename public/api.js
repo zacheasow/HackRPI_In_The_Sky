@@ -50,6 +50,24 @@ export function compareFlights(a, b, resolution = 0.05) {
   return request(`/api/compare?a=${encodeURIComponent(a)}&b=${encodeURIComponent(b)}&resolution=${resolution}`);
 }
 
+export async function deleteFlight(id, token) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
+  try {
+    const response = await fetch(`/api/flights/${encodeURIComponent(id)}`, {
+      method: "DELETE",
+      headers: { "x-admin-token": token },
+      signal: controller.signal,
+    });
+    if (response.status === 403) return 403;
+    return response.ok ? 200 : response.status;
+  } catch {
+    return 0;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 const LOCAL_BOARD = "clouds.board";
 
 export function readLocalBoard() {

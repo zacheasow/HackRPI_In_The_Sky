@@ -13,3 +13,4 @@ function perMinute(limit) {
 export const coachLimiter = perMinute(10);
 export const designsLimiter = perMinute(30);
 export const flightsLimiter = perMinute(30);
+export const deleteLimiter = perMinute(30);

@@ -3,6 +3,7 @@ import { defaultLaunch, defaultPlane } from "../public/plane.js";
 import { createRecorder } from "../public/telemetry.js";
 import { createApp } from "../server/app.js";
 import { compareSeries, getTelemetry, initTelemetry, listFlights, saveFlight, status } from "../server/tiger.js";
+import { axisTicks, compareText, plotX, stallBands } from "../public/replay.js";
 
 function assert(condition, message) {
   if (!condition) {
@@ -198,8 +199,58 @@ try {
   assert(badCompare.status === 400, "compare rejects a bad uuid");
   const missingCompare = await fetch(`${base}/api/compare?a=${bucketId}&b=00000000-0000-0000-0000-000000000000`);
   assert(missingCompare.status === 404, "compare misses an unknown id");
+
+  const doomed = flightBody();
+  assert((await post(doomed)).status === 200, "flight to delete is stored");
+  const remove = async (id, token) => {
+    const headers = {};
+    if (token != null) headers["x-admin-token"] = token;
+    const removed = await fetch(`${base}/api/flights/${id}`, { method: "DELETE", headers });
+    return removed.status;
+  };
+  const previousToken = process.env.ADMIN_TOKEN;
+  delete process.env.ADMIN_TOKEN;
+  assert(await remove(doomed.flight_id, "anything") === 403, "delete without ADMIN_TOKEN is forbidden");
+  process.env.ADMIN_TOKEN = "test-admin";
+  assert(await remove(doomed.flight_id, "nope") === 403, "wrong admin token is forbidden");
+  assert(await remove(doomed.flight_id, "test-admin") === 200, "correct admin token deletes the flight");
+  assert((await fetch(`${base}/api/flights/${doomed.flight_id}/telemetry`)).status === 404, "deleted flight telemetry is gone");
+  assert(!(await listFlights(50)).some((flight) => flight.flight_id === doomed.flight_id), "deleted flight leaves the list");
+  if (previousToken == null) delete process.env.ADMIN_TOKEN;
+  else process.env.ADMIN_TOKEN = previousToken;
 } finally {
   await new Promise((resolve) => server.close(resolve));
 }
+
+const stallTimes = [0, 0.25, 0.5, 0.65, 0.8, 1.2, 2];
+const stallFlags = [false, false, true, true, true, false, false];
+const bands = stallBands(stallTimes, stallFlags);
+assert(bands.length === 1 && bands[0].start === 0.5 && bands[0].end === 0.8, "stall shade covers only 0.5 s to 0.8 s");
+assert(stallBands(stallTimes, stallFlags.map(() => false)).length === 0, "a flight that did not stall is not shaded");
+assert(stallBands([0, 1, 2], ["t", "t", "t"]).length === 0, "non-boolean stall flags do not shade the chart");
+const stallLeft = plotX(0.5, 0, 2, 40, 200);
+const stallRight = plotX(0.8, 0, 2, 40, 200);
+assert(Math.abs(stallLeft - 90) < 1e-6 && Math.abs(stallRight - 120) < 1e-6, "stall band uses the time axis");
+assert(stallLeft > 40 && stallRight < 240, "a mid-flight stall does not cover the chart");
+for (const [min, max] of [[0, 4.93], [0, 1.74], [1.5, 3.6]]) {
+  const ticks = axisTicks(min, max);
+  assert(ticks.length >= 4 && ticks.length <= 6, `axis from ${min} to ${max} has ${ticks.length} ticks`);
+  assert(ticks[0] <= min + 1e-6 && ticks.at(-1) >= max - 1e-6, `axis from ${min} to ${max} covers the data`);
+}
+
+const named = compareText({
+  labels: { a: "16.19 m", b: "3.90 m" },
+  comparison: {
+    distanceDiff: 12.28,
+    firstStall: { a: null, b: 0.5 },
+    peakSpeed: { a: 3.3, b: 3.7 },
+    divergeAt: 1.05,
+  },
+}, { a: 16.19, b: 3.9 });
+assert(named === "Flight A flew 12.28 m farther (16.19 m vs 3.90 m). Flight B stalled at 0.5 s; Flight A did not stall. Peak speed: A 3.3 m/s, B 3.7 m/s. Paths diverged at 1.05 s.", "distance labels read as Flight A and Flight B");
+assert(compareText({
+  labels: { a: "glider", b: "dart" },
+  comparison: { distanceDiff: 3.02, firstStall: { a: null, b: null }, peakSpeed: { a: 4, b: 8.9 }, divergeAt: 0.11 },
+}, { a: 12.39, b: 9.37 }).startsWith("Glider flew 3.02 m farther (12.39 m vs 9.37 m). Neither flight stalled."), "named flights keep their labels");
 
 if (!process.exitCode) console.log("Telemetry checks passed.");
