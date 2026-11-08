@@ -6,6 +6,7 @@
   "main": "server/index.js",
   "scripts": {
     "start": "node server/index.js",
+    "prod": "node server/index.js",
     "test": "node tests/baseline.js && node tests/plane.js && node tests/wind.js && node tests/editor.js && node tests/diagnosis.js && node tests/server.js && node tests/leaderboard.js && node tests/coach.js && node tests/autotune.js"
   },
   "engines": {

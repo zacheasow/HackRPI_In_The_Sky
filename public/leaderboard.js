@@ -34,14 +34,13 @@ function render(entries) {
 }
 
 async function load() {
+  note.textContent = "This browser only";
+  render(readLocalBoard());
   const remote = await leaderboard(20);
   if (remote?.ok && remote.entries.length > 0) {
     note.textContent = "The farthest throws.";
     render(remote.entries);
-    return;
   }
-  note.textContent = "This browser only";
-  render(readLocalBoard());
 }
 
 document.querySelector("#board-refresh").addEventListener("click", load);

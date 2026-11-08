@@ -61,14 +61,14 @@
               <ul id="coach-suggestions" class="diagnosis-details"></ul>
               <div class="coach-actions">
                 <button type="button" id="coach-apply" class="quiet" hidden>Apply suggestions</button>
-                <button type="button" id="coach-undo" class="text" hidden>Reset</button>
+                <button type="button" id="coach-undo" class="quiet" hidden>Reset</button>
               </div>
             </div>
 
             <div id="tab-history" role="tabpanel" hidden>
               <p id="best-flight" class="best-flight">Best distance: no flights yet.</p>
               <div class="history-head">
-                <button id="history-clear" type="button" class="text">Clear</button>
+                <button id="history-clear" type="button" class="quiet">Clear</button>
               </div>
               <ul id="history" class="history"></ul>
             </div>
@@ -124,7 +124,7 @@
             <div class="seed-row" id="wind-seed-wrap">
               <label for="wind-seed">Seed</label>
               <input id="wind-seed" type="number" step="1" value="1" />
-              <button id="wind-new-seed" type="button" class="text">New seed</button>
+              <button id="wind-new-seed" type="button" class="quiet">New seed</button>
             </div>
           </details>
 
@@ -139,7 +139,7 @@
           </div>
           <div class="actions">
             <button id="launch" type="button">Launch</button>
-            <button id="reset" type="button" class="text">Reset</button>
+            <button id="reset" type="button" class="quiet">Reset</button>
           </div>
         </section>
       </main>

@@ -1,10 +1,23 @@
 # In the Clouds
 
-A paper airplane flight simulator. Shape the wing, watch the balance, then see how far the glide carries.
+In the Clouds is a paper airplane flight simulator built for HackRPI. You shape a plane, throw it through seeded wind, and try to fly as far as you can. The sim shows the distance and a plain-language reason for how the flight ended.
 
-Shape sliders set the span, chords, sweep, tail, and nose weight. The page derives wing area, aspect ratio, mass, center of gravity, aerodynamic center, and static margin from that shape. The flight coach and leaderboard are not wired up yet.
+You can drag the wing and tail, read the stability numbers, ask a Gemini coach for changes, auto-tune the shape, and save a score to a shared MongoDB leaderboard. If the coach key or the database is missing, the page still flies and keeps scores in this browser.
 
-## Run locally
+## Features
+
+- Drag handles and sliders for span, chords, sweep, tail area, and nose weight
+- Seeded wind: random, fixed, or off
+- Local flight diagnosis and a history of the last 10 throws
+- Gemini coach that explains a flight and can apply numeric changes
+- Auto-tune that searches for a longer flight inside the editor limits
+- MongoDB leaderboard, with a local fallback
+
+## Tech stack
+
+Plain HTML, CSS, and JavaScript in the browser. Node.js and Express serve the pages and the API. The coach uses the Gemini API. The leaderboard uses MongoDB. Production is a Vultr VPS with pm2 and nginx.
+
+## Local setup
 
 Requires Node.js 18 or newer.
 
@@ -16,82 +29,99 @@ npm start
 
 Open [http://localhost:3000](http://localhost:3000).
 
-Check the physics with:
-
 ```bash
 npm test
 ```
 
-That prints a baseline distance for the default airplane thrown at 4 m/s and 3° from 1.5 m, plus its CG, AC, and static margin.
+With the wind off, the default glider thrown at 4 m/s and 3° from 1.5 m flies 12.39 m. The same plane thrown at 7 m/s and 4° flies 16.45 m.
 
 ## Environment variables
 
-Copy the example file and fill in what you have. The server starts without any of these set.
-
-```bash
-cp .env.example .env
-```
+Copy `.env.example` to `.env`. Leave a value blank to skip that feature. Do not commit `.env`.
 
 | Variable | Purpose |
 | --- | --- |
-| `GEMINI_API_KEY` | Key for the Gemini flight coach. Stays on the server. |
+| `GEMINI_API_KEY` | Server-side key for the Gemini flight coach. Blank skips the coach. |
 | `GEMINI_MODEL` | Gemini model name. Defaults to `gemini-2.5-flash`. |
-| `MONGODB_URI` | MongoDB Atlas connection string for the shared leaderboard. |
+| `MONGODB_URI` | MongoDB connection string for the shared leaderboard. Blank keeps scores in the browser. |
+| `MONGODB_DB` | Database name. Defaults to `HackRPI`. |
+| `MONGODB_COLLECTION` | Collection name. Defaults to `hackrpi`. |
 | `PORT` | Port Express listens on. Defaults to `3000`. |
 
-## Tuning the flight model
+## Deploy to Vultr
 
-All aerodynamic constants live in the `CONFIG` object at the top of `public/physics.js`. The default airplane is `defaultPlane()` in `public/plane.js`.
+These steps assume a fresh Ubuntu VPS. The Node app listens on port 3000. nginx serves port 80 and proxies to it.
 
-## Deploy on a Vultr VPS
+1. Create an Ubuntu VPS in the Vultr panel and SSH in as a user with sudo.
 
-These notes assume a fresh Ubuntu VPS and that the app should be served on port 80.
-
-1. Install Node.js 20 and git.
+2. Install Node.js 20, nginx, and pm2.
 
 ```bash
 curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
-sudo apt-get install -y nodejs git nginx
+sudo apt-get install -y nodejs nginx
+sudo npm install -g pm2
 ```
 
-2. Clone the project and install dependencies.
+3. Clone the repo and install dependencies.
 
 ```bash
-git clone <your-repo-url> in-the-clouds
-cd in-the-clouds
-cp .env.example .env
-# edit .env and set PORT=3000 plus any API keys
+git clone https://github.com/zacheasow/HackRPI_In_The_Sky.git
+cd HackRPI_In_The_Sky
 npm install
 ```
 
-3. Keep the process running with pm2.
+4. Create `.env` on the server. Fill in the values you have. `PORT` should stay `3000`.
 
 ```bash
-sudo npm install -g pm2
-pm2 start server/index.js --name in-the-clouds
+cp .env.example .env
+nano .env
+```
+
+5. Start the app with pm2, save the process list, and register the startup script.
+
+The config is `ecosystem.config.cjs` because this package is an ES module, and pm2 loads a CommonJS file.
+
+```bash
+pm2 start ecosystem.config.cjs
 pm2 save
 pm2 startup
 ```
 
-4. Reverse-proxy port 80 to the Node process.
+Run the command `pm2 startup` prints, then run `pm2 save` again.
 
-```nginx
-server {
-    listen 80;
-    server_name _;
-
-    location / {
-        proxy_pass http://127.0.0.1:3000;
-        proxy_http_version 1.1;
-        proxy_set_header Host $host;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-    }
-}
-```
+6. Copy the nginx config into place and reload.
 
 ```bash
+sudo cp deploy/nginx.conf /etc/nginx/sites-available/in-the-clouds
+sudo ln -s /etc/nginx/sites-available/in-the-clouds /etc/nginx/sites-enabled/in-the-clouds
+sudo rm -f /etc/nginx/sites-enabled/default
 sudo nginx -t && sudo systemctl reload nginx
-sudo ufw allow 80/tcp
 ```
 
-The app is same-origin: the Express server serves the page and, in later stages, the API. Do not open CORS for this setup.
+7. Add HTTPS with certbot after the DNS name points at the VPS. Set `server_name` in the nginx file to that domain first.
+
+```bash
+sudo apt-get install -y certbot python3-certbot-nginx
+sudo certbot --nginx -d example.com
+```
+
+The app is same-origin. Express serves the pages and the API. Do not open CORS for this setup.
+
+## Project structure
+
+- `public/index.html` — landing page
+- `public/sim.html` — flight page
+- `public/leaderboard.html` — leaderboard page
+- `public/physics.js` — flight model and tunable `CONFIG`
+- `public/plane.js` — shape, mass, CG, and static margin
+- `public/editor.js` — drag handles
+- `public/main.js` — flight page wiring
+- `public/autotune.js` — shape search
+- `public/render.js` — canvas sky and flight view
+- `server/index.js` — process entry
+- `server/app.js` — Express app and routes
+- `server/coach.js` — Gemini coach
+- `server/db.js` — MongoDB connection
+- `ecosystem.config.cjs` — pm2 process file
+- `deploy/nginx.conf` — reverse proxy
+- `tests/` — `npm test`

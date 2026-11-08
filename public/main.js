@@ -561,6 +561,7 @@ export function bootSim(options = {}) {
   });
 
   document.querySelector("#launch").addEventListener("click", () => {
+    stopTune();
     const savedShape = { ...readShape() };
     const savedLaunch = readLaunch();
     const plane = derivePlane(savedShape);

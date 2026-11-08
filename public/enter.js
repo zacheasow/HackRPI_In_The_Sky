@@ -12,6 +12,7 @@ const STORAGE_KEY = "clouds.enterFly";
 let entering = false;
 let unbindEnter = null;
 let unbindReturn = null;
+let unbindPop = null;
 let simHtmlCache = null;
 let homeHtmlCache = null;
 let mainModPromise = null;
@@ -306,13 +307,13 @@ export async function enterFly(homeView) {
     sessionStorage.removeItem(STORAGE_KEY);
 
     bindReturnHome(simView);
-    window.addEventListener(
-      "popstate",
-      () => {
-        enterHome(simView, { fromPopState: true });
-      },
-      { once: true }
-    );
+    if (unbindPop) unbindPop();
+    const onPop = () => enterHome(simView, { fromPopState: true });
+    window.addEventListener("popstate", onPop);
+    unbindPop = () => {
+      window.removeEventListener("popstate", onPop);
+      unbindPop = null;
+    };
     await wait(0);
   } catch (err) {
     console.error(err);
@@ -332,6 +333,7 @@ export async function enterHome(simView, options = {}) {
 
   entering = true;
   sessionStorage.setItem(STORAGE_KEY, "1");
+  if (unbindPop) unbindPop();
   if (unbindReturn) unbindReturn();
 
   const dpr = Math.min(window.devicePixelRatio || 1, 2);
