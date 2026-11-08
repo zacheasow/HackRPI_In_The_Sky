@@ -26,6 +26,7 @@
             <div class="tabs" role="tablist" aria-label="Flight notes">
               <button type="button" role="tab" data-tab="results" aria-selected="true" aria-controls="tab-results">Results</button>
               <button type="button" role="tab" data-tab="history" aria-selected="false" aria-controls="tab-history" tabindex="-1">History</button>
+              <button type="button" role="tab" data-tab="coach" aria-selected="false" aria-controls="tab-coach" tabindex="-1">Coach</button>
             </div>
 
             <div id="tab-results" role="tabpanel">
@@ -54,6 +55,16 @@
               </form>
             </div>
 
+            <div id="tab-coach" role="tabpanel" hidden>
+              <p id="coach-status" class="note" hidden>thinking…</p>
+              <p id="coach-explanation" class="diagnosis-headline"></p>
+              <ul id="coach-suggestions" class="diagnosis-details"></ul>
+              <div class="coach-actions">
+                <button type="button" id="coach-apply" class="quiet" hidden>Apply suggestions</button>
+                <button type="button" id="coach-undo" class="text" hidden>Reset</button>
+              </div>
+            </div>
+
             <div id="tab-history" role="tabpanel" hidden>
               <p id="best-flight" class="best-flight">Best distance: no flights yet.</p>
               <div class="history-head">
@@ -70,6 +81,19 @@
             <summary>Shape</summary>
             <canvas id="editor" class="editor" width="640" height="440" aria-label="Top-down airplane shape. Drag the handles to change the wing and tail."></canvas>
             <div id="shape-sliders"></div>
+            <div class="tune-box">
+              <button type="button" id="auto-tune" class="quiet">Auto-tune</button>
+              <button type="button" id="tune-cancel" class="quiet" hidden>Cancel</button>
+              <p id="tune-status" class="note" hidden aria-live="polite"></p>
+              <div id="tune-result" hidden>
+                <p id="tune-compare"></p>
+                <ul id="tune-changes" class="diagnosis-details"></ul>
+                <div class="coach-actions">
+                  <button type="button" id="tune-apply" class="quiet">Apply</button>
+                  <button type="button" id="tune-discard" class="quiet">Discard</button>
+                </div>
+              </div>
+            </div>
           </details>
 
           <details class="section" open>

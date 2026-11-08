@@ -16,8 +16,9 @@ function memoryCollection() {
   return {
     async createIndex() {},
     async insertOne(doc) {
-      docs.push({ ...doc });
-      return { insertedId: docs.length };
+      const insertedId = (docs.length + 1).toString(16).padStart(24, "0");
+      docs.push({ ...doc, _id: insertedId });
+      return { insertedId };
     },
     async countDocuments(filter) {
       return docs.filter((doc) => filter.$or.some((clause) => {
@@ -88,6 +89,7 @@ try {
     { mode: "off" }
   ).distance;
   assert(tagged.status === 200 && tagged.body.ok === true, "tagged name is accepted");
+  assert(/^[0-9a-f]{24}$/.test(tagged.body.design_id), "design_id is a 24-character hex string");
   assert(Math.abs(tagged.body.distance - expected) < 1e-9, "server recomputes distance");
   assert(tagged.body.distance !== 99999, "client distance is ignored");
 

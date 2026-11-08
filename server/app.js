@@ -4,7 +4,8 @@ import path from "path";
 import { fileURLToPath } from "url";
 import { prepareEntry, publicEntry, readLimit } from "./board.js";
 import { getCollection, ping } from "./db.js";
-import { designsLimiter } from "./limits.js";
+import { askCoach } from "./coach.js";
+import { coachLimiter, designsLimiter } from "./limits.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const { version } = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8"));
@@ -31,6 +32,11 @@ function asyncRoute(fn) {
   return (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
 }
 
+function designId(value) {
+  const text = value && typeof value.toHexString === "function" ? value.toHexString() : String(value ?? "");
+  return /^[0-9a-f]{24}$/i.test(text) ? text.toLowerCase() : null;
+}
+
 export function createApp(options = {}) {
   const app = express();
   app.disable("x-powered-by");
@@ -55,6 +61,19 @@ export function createApp(options = {}) {
     });
   }));
 
+  app.post("/api/coach", coachLimiter, asyncRoute(async (req, res) => {
+    const outcome = await askCoach(req.body, options.coach);
+    if (outcome.error) {
+      res.status(400).json({ ok: false, error: "Bad request" });
+      return;
+    }
+    if (!outcome.ok) {
+      res.status(503).json({ ok: false });
+      return;
+    }
+    res.json({ ok: true, explanation: outcome.explanation, suggestions: outcome.suggestions });
+  }));
+
   app.post("/api/designs", designsLimiter, asyncRoute(async (req, res) => {
     const entry = prepareEntry(req.body);
     if (entry.error) {
@@ -72,14 +91,19 @@ export function createApp(options = {}) {
         scores.__boardIndex = true;
       }
       const createdAt = new Date();
-      await scores.insertOne({ ...entry, createdAt });
+      const inserted = await scores.insertOne({ ...entry, createdAt });
       const ahead = await scores.countDocuments({
         $or: [
           { distance: { $gt: entry.distance } },
           { distance: entry.distance, createdAt: { $lt: createdAt } },
         ],
       });
-      res.json({ ok: true, rank: ahead + 1, distance: entry.distance });
+      res.json({
+        ok: true,
+        rank: ahead + 1,
+        distance: entry.distance,
+        design_id: designId(inserted && inserted.insertedId),
+      });
     } catch {
       console.error("Leaderboard database unavailable");
       res.status(503).json({ ok: false });

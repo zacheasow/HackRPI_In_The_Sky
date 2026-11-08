@@ -18,8 +18,12 @@ export function getHealth() {
   return request("/api/health");
 }
 
-export function coach() {
-  return Promise.resolve(null);
+export function coach(body) {
+  return request("/api/coach", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(body),
+  });
 }
 
 export function designs(body) {

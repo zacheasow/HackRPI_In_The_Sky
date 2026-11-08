@@ -397,6 +397,16 @@ button.text:hover {
   color: var(--ink-soft);
 }
 
+.coach-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.coach-actions button {
+  margin-top: var(--space-2);
+}
+
 .diagnosis-details:empty {
   display: none;
 }
@@ -530,6 +540,20 @@ button.quiet {
   padding: 8px 12px;
   background: transparent;
   color: var(--ink);
+}
+
+.tune-box {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  margin-top: var(--space-2);
+}
+
+.tune-box .note,
+.tune-box #tune-result {
+  flex-basis: 100%;
+  margin: 0;
 }
 
 body.board {

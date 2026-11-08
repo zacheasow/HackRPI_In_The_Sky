@@ -6,12 +6,13 @@
   "main": "server/index.js",
   "scripts": {
     "start": "node server/index.js",
-    "test": "node tests/baseline.js && node tests/plane.js && node tests/wind.js && node tests/editor.js && node tests/diagnosis.js && node tests/server.js && node tests/leaderboard.js"
+    "test": "node tests/baseline.js && node tests/plane.js && node tests/wind.js && node tests/editor.js && node tests/diagnosis.js && node tests/server.js && node tests/leaderboard.js && node tests/coach.js && node tests/autotune.js"
   },
   "engines": {
     "node": ">=18"
   },
   "dependencies": {
+    "@google/genai": "^3.0.0",
     "dotenv": "^16.4.7",
     "express": "^4.21.2",
     "express-rate-limit": "^8.7.3",

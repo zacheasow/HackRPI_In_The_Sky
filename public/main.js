@@ -1,4 +1,5 @@
-import { designs, getHealth, saveLocalBoard } from "./api.js";
+import { coach, designs, getHealth, saveLocalBoard } from "./api.js";
+import { TUNE_EVALS, createSearch } from "./autotune.js";
 import { diagnose } from "./diagnosis.js";
 import { clampShape, initEditor } from "./editor.js";
 import { SHAPE_LIMITS, defaultLaunch, defaultPlane, defaultShape, derivePlane } from "./plane.js";
@@ -17,8 +18,12 @@ const SHAPE_FIELDS = [
 let booted = false;
 let view = null;
 let skyView = null;
+let tuneAlive = 0;
+let tuneTimer = 0;
 
 export function resetSimBoot() {
+  tuneAlive += 1;
+  clearTimeout(tuneTimer);
   if (view) {
     try {
       view.dispose();
@@ -356,25 +361,166 @@ export function bootSim(options = {}) {
   const submitNote = document.querySelector("#submit-note");
   const nameInput = document.querySelector("#pilot-name");
   let lastFlight = null;
+  let designId = null; // kept for a later telemetry attach; not shown
 
   function pilotName(value) {
     return String(value ?? "").replace(/<[^>]*>/g, "").replace(/[<>]/g, "").trim().slice(0, 20);
   }
 
+  function selectTab(name) {
+    document.querySelectorAll("[data-tab]").forEach((button) => {
+      const on = button.dataset.tab === name;
+      button.setAttribute("aria-selected", String(on));
+      button.tabIndex = on ? 0 : -1;
+    });
+    for (const id of ["results", "history", "coach"]) {
+      const panel = document.querySelector(`#tab-${id}`);
+      if (panel) panel.hidden = id !== name;
+    }
+  }
+
+  const coachStatus = document.querySelector("#coach-status");
+  const coachExplanation = document.querySelector("#coach-explanation");
+  const coachList = document.querySelector("#coach-suggestions");
+  const coachApply = document.querySelector("#coach-apply");
+  const coachUndo = document.querySelector("#coach-undo");
+  let coachTicket = 0;
+  let coachBase = null;
+  let coachSuggestions = [];
+  let priorFlight = null;
+
+  function peakSpeed(samples) {
+    let peak = 0;
+    for (const sample of samples || []) {
+      const speed = Math.hypot(Number(sample.vx) || 0, Number(sample.vy) || 0);
+      if (speed > peak) peak = speed;
+    }
+    return peak;
+  }
+
+  function flightBrief(savedShape, savedLaunch, plane, result, note) {
+    const wind = result.wind || {};
+    return {
+      params: {
+        span: savedShape.span,
+        rootChord: savedShape.rootChord,
+        tipChord: savedShape.tipChord,
+        sweepDeg: savedShape.sweepDeg,
+        tailArea: savedShape.tailArea,
+        noseWeight: savedShape.noseWeight,
+        speed: savedLaunch.speed,
+        angleDeg: savedLaunch.angleDeg,
+      },
+      derived: {
+        wingArea: plane.wingArea,
+        aspectRatio: plane.aspectRatio,
+        mass: plane.mass,
+        cg: plane.cg,
+        ac: plane.neutralPoint,
+        staticMargin: plane.staticMargin,
+        meanChord: plane.meanChord,
+        tailArm: plane.tailArm,
+      },
+      result: {
+        distance: result.distance,
+        flightTime: result.flightTime,
+        maxHeight: result.maxHeight,
+        endReason: result.endReason,
+        stalled: result.stalled === true,
+        stallTime: Number.isFinite(result.stallTime) ? result.stallTime : null,
+        blownBack: result.blownBack === true,
+        peakSpeed: peakSpeed(result.samples),
+      },
+      wind: {
+        mode: wind.mode === "random" || wind.mode === "fixed" ? wind.mode : "off",
+        seed: wind.seed,
+        steady: wind.steady,
+        gustMax: wind.gustMax,
+        avg: wind.avg,
+      },
+      diagnosis: {
+        headline: note.headline,
+        details: note.details,
+        tags: note.tags,
+      },
+    };
+  }
+
+  function renderCoachSuggestions() {
+    if (!coachList) return;
+    coachList.replaceChildren(
+      ...coachSuggestions.map((item) => {
+        const field = SHAPE_FIELDS.find((entry) => entry.key === item.parameter);
+        const shown = field ? item.change * field.scale : item.change;
+        const digits = field ? field.digits : 2;
+        const unit = field ? field.unit : "";
+        const signed = `${shown > 0 ? "+" : ""}${Number(shown).toFixed(digits)} ${unit}`.trim();
+        const row = document.createElement("li");
+        row.textContent = `${field ? field.label : item.parameter}: ${signed}. ${item.reason}`;
+        return row;
+      })
+    );
+    if (coachApply) coachApply.hidden = coachSuggestions.length === 0;
+  }
+
+  function clearCoach() {
+    coachTicket += 1;
+    coachBase = null;
+    coachSuggestions = [];
+    if (coachStatus) {
+      coachStatus.hidden = true;
+      coachStatus.textContent = "";
+    }
+    if (coachExplanation) coachExplanation.textContent = "";
+    if (coachList) coachList.replaceChildren();
+    if (coachApply) coachApply.hidden = true;
+    if (coachUndo) coachUndo.hidden = true;
+  }
+
+  function askCoach(savedShape, savedLaunch, plane, result, note) {
+    if (!coachExplanation) return;
+    const ticket = ++coachTicket;
+    coachBase = null;
+    coachSuggestions = [];
+    if (coachUndo) coachUndo.hidden = true;
+    if (coachApply) coachApply.hidden = true;
+    if (coachList) coachList.replaceChildren();
+    coachExplanation.textContent = [note.headline, ...(note.details || [])].filter(Boolean).join(" ");
+    if (coachStatus) {
+      coachStatus.hidden = false;
+      coachStatus.textContent = "thinking…";
+    }
+    const payload = flightBrief(savedShape, savedLaunch, plane, result, note);
+    if (priorFlight) {
+      const currentWon = result.distance >= priorFlight.result.distance;
+      const winner = currentWon ? { savedShape, savedLaunch, plane, result, note } : priorFlight;
+      const loser = currentWon ? priorFlight : { savedShape, savedLaunch, plane, result, note };
+      payload.comparison = {
+        a: flightBrief(winner.savedShape, winner.savedLaunch, winner.plane, winner.result, winner.note),
+        b: flightBrief(loser.savedShape, loser.savedLaunch, loser.plane, loser.result, loser.note),
+      };
+    }
+    priorFlight = { savedShape, savedLaunch, plane, result, note };
+    coach(payload).then((reply) => {
+      if (ticket !== coachTicket) return;
+      if (coachStatus) {
+        coachStatus.hidden = true;
+        coachStatus.textContent = "";
+      }
+      if (!reply?.ok || typeof reply.explanation !== "string") return;
+      coachExplanation.textContent = reply.explanation;
+      coachSuggestions = Array.isArray(reply.suggestions) ? reply.suggestions : [];
+      renderCoachSuggestions();
+    });
+  }
+
   function offerSubmit(result, shape, launch, wind) {
     const blocked = !(result && result.distance > 0 && result.endReason !== "blown back");
     lastFlight = blocked ? null : { result, shape, launch, wind };
+    designId = null;
     if (submitBox) submitBox.hidden = blocked;
     if (submitNote) submitNote.textContent = "";
-    if (!blocked) {
-      document.querySelectorAll("[data-tab]").forEach((button) => {
-        const on = button.dataset.tab === "results";
-        button.setAttribute("aria-selected", String(on));
-        button.tabIndex = on ? 0 : -1;
-      });
-      document.querySelector("#tab-results").hidden = false;
-      document.querySelector("#tab-history").hidden = true;
-    }
+    if (!blocked) selectTab("results");
   }
 
   submitBox?.addEventListener("submit", async (event) => {
@@ -395,9 +541,11 @@ export function bootSim(options = {}) {
       wind: lastFlight.wind,
     });
     if (saved?.ok) {
+      designId = typeof saved.design_id === "string" ? saved.design_id : null;
       submitNote.textContent = `Rank ${saved.rank}.`;
       return;
     }
+    designId = null;
     saveLocalBoard({
       name,
       distance: lastFlight.result.distance,
@@ -424,6 +572,7 @@ export function bootSim(options = {}) {
     heightOut.textContent = `${result.maxHeight.toFixed(2)} m`;
     statusOut.textContent = endLabel(result.endReason);
     showDiagnosis(note);
+    askCoach(savedShape, savedLaunch, plane, result, note);
     remember(result, note, savedShape, savedLaunch);
     offerSubmit(result, savedShape, savedLaunch, readWind());
     view.play(result, (progress) => {
@@ -438,6 +587,9 @@ export function bootSim(options = {}) {
     angleInput.value = String(launchDefaults.angleDeg);
     applyWindDefaults();
     clearStats();
+    clearCoach();
+    stopTune();
+    priorFlight = null;
     offerSubmit(null);
     refresh();
   });
@@ -481,17 +633,116 @@ export function bootSim(options = {}) {
     });
   });
 
+  coachApply?.addEventListener("click", () => {
+    if (!coachSuggestions.length) return;
+    if (!coachBase) coachBase = { ...shape };
+    const next = { ...coachBase };
+    for (const item of coachSuggestions) {
+      if (!(item.parameter in SHAPE_LIMITS)) continue;
+      next[item.parameter] = Number(coachBase[item.parameter]) + Number(item.change);
+    }
+    shape = clampShape(next);
+    if (coachUndo) coachUndo.hidden = false;
+    refresh();
+  });
+
+  coachUndo?.addEventListener("click", () => {
+    if (!coachBase) return;
+    shape = clampShape(coachBase);
+    coachBase = null;
+    coachUndo.hidden = true;
+    refresh();
+  });
+
   document.querySelectorAll("[data-tab]").forEach((button) => {
-    button.addEventListener("click", () => {
-      const name = button.dataset.tab;
-      document.querySelectorAll("[data-tab]").forEach((other) => {
-        const on = other === button;
-        other.setAttribute("aria-selected", String(on));
-        other.tabIndex = on ? 0 : -1;
-      });
-      document.querySelector("#tab-results").hidden = name !== "results";
-      document.querySelector("#tab-history").hidden = name !== "history";
-    });
+    button.addEventListener("click", () => selectTab(button.dataset.tab));
+  });
+
+  const tuneButton = document.querySelector("#auto-tune");
+  const tuneCancel = document.querySelector("#tune-cancel");
+  const tuneStatus = document.querySelector("#tune-status");
+  const tuneResult = document.querySelector("#tune-result");
+  const tuneCompare = document.querySelector("#tune-compare");
+  const tuneChanges = document.querySelector("#tune-changes");
+  const tuneApply = document.querySelector("#tune-apply");
+  const tuneDiscard = document.querySelector("#tune-discard");
+  let tunePick = null;
+
+  function stopTune() {
+    tuneAlive += 1;
+    clearTimeout(tuneTimer);
+    tunePick = null;
+    if (tuneButton) tuneButton.disabled = false;
+    if (tuneCancel) tuneCancel.hidden = true;
+    if (tuneStatus) {
+      tuneStatus.hidden = true;
+      tuneStatus.textContent = "";
+    }
+    if (tuneResult) tuneResult.hidden = true;
+    if (tuneChanges) tuneChanges.replaceChildren();
+  }
+
+  function showTuneResult(found, from) {
+    if (!tuneResult) return;
+    tunePick = found.shape;
+    tuneCompare.textContent = `${found.before.toFixed(2)} m before, ${found.after.toFixed(2)} m after`;
+    const rows = SHAPE_FIELDS.map((field) => {
+      const delta = found.shape[field.key] - from[field.key];
+      if (Math.abs(delta) < 1e-6) return "";
+      const shown = delta * field.scale;
+      return `${field.label}: ${shown > 0 ? "+" : ""}${shown.toFixed(field.digits)} ${field.unit}`;
+    }).filter(Boolean);
+    tuneChanges.replaceChildren(
+      ...(rows.length ? rows : ["No changes"]).map((text) => {
+        const row = document.createElement("li");
+        row.textContent = text;
+        return row;
+      })
+    );
+    tuneResult.hidden = false;
+  }
+
+  tuneButton?.addEventListener("click", () => {
+    const alive = ++tuneAlive;
+    const from = { ...shape };
+    const search = createSearch(from, readLaunch(), readWind(), 1);
+    tunePick = null;
+    tuneButton.disabled = true;
+    if (tuneCancel) tuneCancel.hidden = false;
+    if (tuneResult) tuneResult.hidden = true;
+    if (tuneStatus) tuneStatus.hidden = false;
+    const chunk = () => {
+      if (alive !== tuneAlive) return;
+      const started = performance.now();
+      while (!search.done && performance.now() - started < 16) search.step(1);
+      if (alive !== tuneAlive) return;
+      const best = search.bestDistance == null ? "—" : `${search.bestDistance.toFixed(1)} m`;
+      if (tuneStatus) tuneStatus.textContent = `Tuning… ${search.evals}/${TUNE_EVALS}, best ${best}`;
+      if (!search.done) {
+        tuneTimer = setTimeout(chunk, 0);
+        return;
+      }
+      tuneButton.disabled = false;
+      if (tuneCancel) tuneCancel.hidden = true;
+      if (tuneStatus) tuneStatus.hidden = true;
+      showTuneResult(search.result(), from);
+    };
+    tuneTimer = setTimeout(chunk, 0);
+  });
+
+  tuneCancel?.addEventListener("click", stopTune);
+
+  tuneApply?.addEventListener("click", () => {
+    if (!tunePick) return;
+    shape = clampShape(tunePick);
+    tunePick = null;
+    if (tuneResult) tuneResult.hidden = true;
+    refresh();
+  });
+
+  tuneDiscard?.addEventListener("click", () => {
+    tunePick = null;
+    if (tuneResult) tuneResult.hidden = true;
   });
 
   buildShapeSliders();
