@@ -1,5 +1,5 @@
 {
-  "name": "in-the-clouds",
+  "name": "aerogami",
   "version": "1.0.0",
   "description": "Paper airplane flight simulator with a sky-and-clouds theme",
   "type": "module",
@@ -7,7 +7,8 @@
   "scripts": {
     "start": "node server/index.js",
     "prod": "node server/index.js",
-    "test": "node tests/baseline.js && node tests/plane.js && node tests/wind.js && node tests/editor.js && node tests/diagnosis.js && node tests/server.js && node tests/leaderboard.js && node tests/coach.js && node tests/autotune.js"
+    "seed": "node scripts/seed.js",
+    "test": "node tests/baseline.js && node tests/plane.js && node tests/wind.js && node tests/editor.js && node tests/diagnosis.js && node tests/server.js && node tests/leaderboard.js && node tests/coach.js && node tests/autotune.js && node tests/telemetry.js"
   },
   "engines": {
     "node": ">=18"
@@ -17,6 +18,7 @@
     "dotenv": "^16.4.7",
     "express": "^4.21.2",
     "express-rate-limit": "^8.7.3",
-    "mongodb": "^7.8.0"
+    "mongodb": "^7.8.0",
+    "pg": "^8.23.1"
   }
 }

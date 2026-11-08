@@ -1,6 +1,6 @@
-# In the Clouds
+# Aerogami
 
-In the Clouds is a paper airplane flight simulator built for HackRPI. You shape a plane, throw it through seeded wind, and try to fly as far as you can. The sim shows the distance and a plain-language reason for how the flight ended.
+Aerogami is a paper airplane flight simulator built for HackRPI. You shape a plane, throw it through seeded wind, and try to fly as far as you can. The sim shows the distance and a plain-language reason for how the flight ended.
 
 You can drag the wing and tail, read the stability numbers, ask a Gemini coach for changes, auto-tune the shape, and save a score to a shared MongoDB leaderboard. If the coach key or the database is missing, the page still flies and keeps scores in this browser.
 
@@ -92,8 +92,8 @@ Run the command `pm2 startup` prints, then run `pm2 save` again.
 6. Copy the nginx config into place and reload.
 
 ```bash
-sudo cp deploy/nginx.conf /etc/nginx/sites-available/in-the-clouds
-sudo ln -s /etc/nginx/sites-available/in-the-clouds /etc/nginx/sites-enabled/in-the-clouds
+sudo cp deploy/nginx.conf /etc/nginx/sites-available/aerogami
+sudo ln -s /etc/nginx/sites-available/aerogami /etc/nginx/sites-enabled/aerogami
 sudo rm -f /etc/nginx/sites-enabled/default
 sudo nginx -t && sudo systemctl reload nginx
 ```

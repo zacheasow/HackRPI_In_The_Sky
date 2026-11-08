@@ -303,7 +303,7 @@ export async function enterFly(homeView) {
     simView.resize();
 
     history.pushState({ intoSky: true }, "", "/sim.html");
-    document.title = doc.title || "In the Clouds";
+    document.title = doc.title || "Aerogami";
     sessionStorage.removeItem(STORAGE_KEY);
 
     bindReturnHome(simView);
@@ -431,7 +431,7 @@ export async function enterHome(simView, options = {}) {
     if (!options.fromPopState) {
       history.pushState({ intoSky: false }, "", "/");
     }
-    document.title = doc.title || "In the Clouds";
+    document.title = doc.title || "Aerogami";
     sessionStorage.removeItem(STORAGE_KEY);
 
     bindEnterFly(homeView);

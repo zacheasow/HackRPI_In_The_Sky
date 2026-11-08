@@ -3,7 +3,7 @@
 Shared rules for every coding agent on this repo (Cursor, Freebuff, Claude Code, Codex). Read this before changing anything.
 
 ## Project
-"In the Clouds": a paper airplane flight simulator for HackRPI. The player edits a paper airplane's shape, launches it, and tries to maximize flight distance. Sky gradient and drifting clouds theme.
+"Aerogami": a paper airplane flight simulator for HackRPI. The player edits a paper airplane's shape, launches it, and tries to maximize flight distance. Sky gradient and drifting clouds theme.
 
 - Frontend: plain HTML/CSS/vanilla JS in `public/`. No frameworks, no bundler, no build step.
 - Backend: small Node.js + Express server in `server/` (ES modules, `"type": "module"`).

@@ -6,6 +6,7 @@ import { prepareEntry, publicEntry, readLimit } from "./board.js";
 import { getCollection, ping } from "./db.js";
 import { askCoach } from "./coach.js";
 import { coachLimiter, designsLimiter } from "./limits.js";
+import { status as telemetryStatus } from "./tiger.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const { version } = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8"));
@@ -58,6 +59,7 @@ export function createApp(options = {}) {
       version,
       coach: Boolean(process.env.GEMINI_API_KEY),
       db,
+      telemetry: telemetryStatus(),
     });
   }));
 
