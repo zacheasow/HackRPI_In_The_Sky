@@ -49,6 +49,13 @@ body {
   position: relative;
   z-index: 1;
   background: transparent;
+  color: var(--ink);
+}
+
+.fly-page .top :is(h1, .lede, a, p, span) {
+  color: var(--ink);
+  -webkit-text-stroke: 0;
+  text-shadow: none;
 }
 
 .fly-sky {
@@ -78,12 +85,10 @@ body {
 }
 
 .nav a {
-  color: #f7f4ee;
-  text-decoration: none;
-}
-
-body.board .nav a {
   color: var(--ink);
+  text-decoration: none;
+  -webkit-text-stroke: 0;
+  text-shadow: none;
 }
 
 .nav a[aria-current="page"] {
@@ -95,13 +100,17 @@ h1 {
   font-size: var(--title);
   font-weight: 600;
   letter-spacing: -0.02em;
-  color: #f7f4ee;
+  color: var(--ink);
+  -webkit-text-stroke: 0;
+  text-shadow: none;
 }
 
 .lede {
   margin: var(--space-1) 0 0;
   max-width: 36rem;
-  color: rgba(247, 244, 238, 0.92);
+  color: var(--ink);
+  -webkit-text-stroke: 0;
+  text-shadow: none;
 }
 
 main {
@@ -542,7 +551,7 @@ body.board .page {
 body.home,
 body.entering-fly {
   background: var(--sky-top);
-  color: #f7f4ee;
+  color: var(--ink);
   overflow: hidden;
   height: 100vh;
 }
@@ -588,24 +597,17 @@ body.home .home-top .nav,
   justify-content: center;
 }
 
-/* Shared dark outline so home copy stays readable on sky/mountains. */
+/* Home copy: solid black type, no outline. */
 body.home .page.home-content :is(h1, h2, h3, p, a, span, .eyebrow, .lede, .note, .stat-row),
 .sky-panel--home .page.home-content :is(h1, h2, h3, p, a, span, .eyebrow, .lede, .note, .stat-row) {
-  -webkit-text-stroke: 1px rgba(36, 48, 39, 0.78);
-  paint-order: stroke fill;
-  text-shadow:
-    0 0 2px rgba(36, 48, 39, 0.85),
-    1px 0 0 rgba(36, 48, 39, 0.7),
-    -1px 0 0 rgba(36, 48, 39, 0.7),
-    0 1px 0 rgba(36, 48, 39, 0.7),
-    0 -1px 0 rgba(36, 48, 39, 0.7),
-    1px 1px 0 rgba(36, 48, 39, 0.45),
-    -1px -1px 0 rgba(36, 48, 39, 0.45);
+  color: var(--ink);
+  -webkit-text-stroke: 0;
+  text-shadow: none;
 }
 
 body.home .page.home-content .nav a,
 .sky-panel--home .page.home-content .nav a {
-  color: #f7f4ee;
+  color: var(--ink);
 }
 
 body.home .page.home-content h1,
@@ -613,8 +615,8 @@ body.home .page.home-content h1,
   margin: 0;
   font-size: clamp(3rem, 7.5vw, 4.6rem);
   line-height: 1.05;
-  color: #f7f4ee;
-  -webkit-text-stroke: 1.6px rgba(36, 48, 39, 0.82);
+  color: var(--ink);
+  -webkit-text-stroke: 0;
 }
 
 body.home .page.home-content .lede,
@@ -622,7 +624,7 @@ body.home .page.home-content .lede,
   margin-top: 10px;
   font-size: 1.15rem;
   line-height: 1.4;
-  color: rgba(247, 244, 238, 0.98);
+  color: var(--ink);
 }
 
 .home-sky {
@@ -690,7 +692,7 @@ body.home .page.home-content main,
   font-size: 0.85rem;
   letter-spacing: 0.08em;
   text-transform: uppercase;
-  color: rgba(247, 244, 238, 0.9);
+  color: var(--ink);
 }
 
 .landing-actions {
@@ -716,13 +718,13 @@ a.start:hover {
 }
 
 a.secondary {
-  color: #f7f4ee;
+  color: var(--ink);
   font-weight: 600;
 }
 
 .stat-row {
   margin-top: var(--space-1);
-  color: rgba(247, 244, 238, 0.85);
+  color: var(--ink);
 }
 
 .how {
@@ -735,7 +737,7 @@ a.secondary {
   margin: 0 0 8px;
   font-size: 1.15rem;
   font-weight: 600;
-  color: #f7f4ee;
+  color: var(--ink);
 }
 
 .how-grid {
@@ -746,7 +748,7 @@ a.secondary {
 
 .how-card {
   background: transparent;
-  color: #f7f4ee;
+  color: var(--ink);
   border-radius: 0;
   padding: 4px 2px;
   box-shadow: none;
@@ -758,18 +760,19 @@ a.secondary {
   height: 24px;
   margin-bottom: 6px;
   color: var(--accent);
-  filter: drop-shadow(0 1px 2px rgba(36, 48, 39, 0.45));
+  filter: none;
 }
 
 .how-card h3 {
   margin: 0;
   font-size: 1.35rem;
   font-weight: 600;
+  color: var(--ink);
 }
 
 .how-card p {
   margin: 6px 0 0;
-  color: rgba(247, 244, 238, 0.92);
+  color: var(--ink);
   font-size: 1.1rem;
   line-height: 1.35;
 }
@@ -780,8 +783,8 @@ body.home .page.home-content .site-foot,
   width: 100%;
   margin: auto auto 0;
   padding-top: 8px;
-  border-top: 1px solid rgba(247, 244, 238, 0.28);
-  color: rgba(247, 244, 238, 0.9);
+  border-top: 1px solid rgba(36, 48, 39, 0.28);
+  color: var(--ink);
   display: flex;
   flex-wrap: wrap;
   gap: 6px var(--space-3);
@@ -791,12 +794,14 @@ body.home .page.home-content .site-foot,
 
 body.home .page.home-content .site-foot a,
 .sky-panel--home .page.home-content .site-foot a {
-  color: #f7f4ee;
+  color: var(--ink);
 }
 
 body.home .page.home-content a.start,
 .sky-panel--home .page.home-content a.start {
-  -webkit-text-stroke: 0.8px rgba(36, 48, 39, 0.55);
+  color: #fffaf6;
+  -webkit-text-stroke: 0;
+  text-shadow: none;
 }
 
 /* Home → Fly transition shell — sky stays put; only UI panels slide */
