@@ -11,6 +11,8 @@ export const CONFIG = {
   dt: 0.002, // fixed timestep, seconds. Semi-implicit Euler.
   maxFlightTime: 40, // safety cap so a loop cannot run forever, seconds
   sampleInterval: 0.02, // seconds between recorded trajectory points
+  // Optional recorder samples. Absent unless simulate() is given a recorder.
+  telemetry: { sampleInterval: 0.01 },
   minAirspeed: 0.25, // below this, aerodynamic forces are treated as zero, m/s
   maxRange: 400, // end the flight if x runs away, meters
   maxAltitude: 150, // end the flight if y runs away, meters
@@ -262,6 +264,10 @@ function aerodynamicDerivatives(state, plane, windX = 0, windY = 0) {
   let moment = 0;
   let alpha = 0;
   let stalled = false;
+  let wingCl = null;
+  let wingCd = null;
+  let wingLift = null;
+  let wingDrag = null;
 
   if (speed >= CONFIG.minAirspeed) {
     const gamma = Math.atan2(airVy, airVx);
@@ -272,6 +278,10 @@ function aerodynamicDerivatives(state, plane, windX = 0, windY = 0) {
     const dynamicPressure = 0.5 * CONFIG.rho * speed * speed;
     const lift = dynamicPressure * plane.wingArea * cl;
     const drag = dynamicPressure * plane.wingArea * cd;
+    wingCl = cl;
+    wingCd = cd;
+    wingLift = lift;
+    wingDrag = drag;
 
     const ux = airVx / speed;
     const uy = airVy / speed;
@@ -321,7 +331,7 @@ function aerodynamicDerivatives(state, plane, windX = 0, windY = 0) {
   if (![ax, ay, qDot, alpha].every(Number.isFinite)) {
     return null;
   }
-  return { ax, ay, qDot, alpha, stalled };
+  return { ax, ay, qDot, alpha, stalled, speed, cl: wingCl, cd: wingCd, lift: wingLift, drag: wingDrag };
 }
 
 function stepState(state, plane, dt, windX, windY) {
@@ -340,7 +350,16 @@ function stepState(state, plane, dt, windX, windY) {
     q,
   };
   if (!finiteState(next)) return null;
-  return { state: next, alpha: derivatives.alpha, stalled: derivatives.stalled };
+  return {
+    state: next,
+    alpha: derivatives.alpha,
+    stalled: derivatives.stalled,
+    speed: derivatives.speed,
+    cl: derivatives.cl,
+    cd: derivatives.cd,
+    lift: derivatives.lift,
+    drag: derivatives.drag,
+  };
 }
 
 function interpolateToGround(before, after) {
@@ -360,11 +379,36 @@ function interpolateToGround(before, after) {
   };
 }
 
+function finiteOrNull(value) {
+  return Number.isFinite(value) ? value : null;
+}
+
+function telemetryPoint(state, t, aero) {
+  return {
+    t,
+    x: state.x,
+    y: state.y,
+    vx: state.vx,
+    vy: state.vy,
+    speed: finiteOrNull(aero && aero.speed),
+    theta: state.theta,
+    alpha: finiteOrNull(aero && aero.alpha),
+    cl: finiteOrNull(aero && aero.cl),
+    cd: finiteOrNull(aero && aero.cd),
+    lift: finiteOrNull(aero && aero.lift),
+    drag: finiteOrNull(aero && aero.drag),
+    stalled: aero && typeof aero.stalled === "boolean" ? aero.stalled : null,
+  };
+}
+
 /**
  * Fly until the airplane reaches the ground, a safety limit, or a bad number.
  * Distance is the final x position, in meters.
+ * Pass `{ recorder }` to sample every CONFIG.telemetry.sampleInterval seconds.
+ * With no recorder the flight result matches the unrecorded flight.
  */
-export function simulate(planeInput, launchInput, windInput) {
+export function simulate(planeInput, launchInput, windInput, options) {
+  const recorder = options && typeof options.recorder === "function" ? options.recorder : null;
   const { plane, launch } = sanitizeInputs(planeInput, launchInput);
   const windField = resolveWind(windInput);
   const angle = launch.angleDeg * DEG;
@@ -388,6 +432,8 @@ export function simulate(planeInput, launchInput, windInput) {
   let windSum = 0;
   let windCount = 0;
   let gustMax = 0;
+  let sinceRecord = recorder ? CONFIG.telemetry.sampleInterval : 0;
+  let lastRecordT = -1;
   const samples = [];
 
   const noteWind = (velocity) => {
@@ -400,6 +446,14 @@ export function simulate(planeInput, launchInput, windInput) {
   const windNow = windVelocity(windField, 0);
   const opening = aerodynamicDerivatives(state, plane, windNow.x, windNow.y);
   if (opening) lastAlpha = opening.alpha;
+  let lastAero = opening;
+
+  const record = (aero) => {
+    if (!recorder || !Number.isFinite(t) || (lastRecordT >= 0 && Math.abs(t - lastRecordT) < 1e-9)) return;
+    recorder(telemetryPoint(state, t, aero));
+    lastRecordT = t;
+    sinceRecord = 0;
+  };
 
   const takeSample = (velocity) => {
     samples.push({
@@ -436,6 +490,8 @@ export function simulate(planeInput, launchInput, windInput) {
       endReason = "nan";
       break;
     }
+    lastAero = stepped;
+    if (recorder && sinceRecord >= CONFIG.telemetry.sampleInterval - 1e-9) record(stepped);
     noteWind(velocity);
     if (stepped.stalled && !stalled) {
       stalled = true;
@@ -452,6 +508,7 @@ export function simulate(planeInput, launchInput, windInput) {
       const landed = windVelocity(windField, t);
       noteWind(landed);
       takeSample(landed);
+      record(stepped);
       break;
     }
 
@@ -459,11 +516,13 @@ export function simulate(planeInput, launchInput, windInput) {
     lastAlpha = stepped.alpha;
     t += CONFIG.dt;
     sinceSample += CONFIG.dt;
+    if (recorder) sinceRecord += CONFIG.dt;
   }
 
   if (samples.length === 0 || samples[samples.length - 1].t < t - 1e-6) {
     if (finiteState(state)) takeSample(windVelocity(windField, t));
   }
+  if (recorder && finiteState(state) && t > lastRecordT + 1e-6) record(lastAero);
 
   // A headwind can stall the glider and carry it back past the throw.
   // Score that as no distance, and say so, instead of a negative result.

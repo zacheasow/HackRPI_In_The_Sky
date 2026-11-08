@@ -1,4 +1,5 @@
 import { coach, designs, getHealth, saveLocalBoard } from "./api.js";
+import { createRecorder, postFlight } from "./telemetry.js";
 import { TUNE_EVALS, createSearch } from "./autotune.js";
 import { diagnose } from "./diagnosis.js";
 import { clampShape, initEditor } from "./editor.js";
@@ -565,7 +566,22 @@ export function bootSim(options = {}) {
     const savedShape = { ...readShape() };
     const savedLaunch = readLaunch();
     const plane = derivePlane(savedShape);
-    const result = simulate(plane, savedLaunch, readWind());
+    const tape = createRecorder();
+    const postedDesign = designId;
+    const result = simulate(plane, savedLaunch, readWind(), { recorder: tape.recorder });
+    postFlight({
+      flight_id: crypto.randomUUID(),
+      label: `${result.distance.toFixed(2)} m`,
+      design_id: postedDesign,
+      summary: {
+        distance: result.distance,
+        flight_time: result.flightTime,
+        max_height: result.maxHeight,
+        end_reason: result.endReason,
+      },
+      params: { ...savedShape, speed: savedLaunch.speed, angleDeg: savedLaunch.angleDeg },
+      samples: tape.samples(),
+    });
     const note = diagnose(result, plane, savedLaunch);
     playing = true;
     distanceOut.textContent = `${result.distance.toFixed(2)} m`;

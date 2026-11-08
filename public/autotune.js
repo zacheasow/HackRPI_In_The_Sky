@@ -1,5 +1,5 @@
 // Seeded random-restart hill climb over the editor shape.
-// shortcut: simulate is called with no recorder or telemetry argument, so these flights stay unlogged until that API exists.
+// shortcut: simulate is called with no recorder, so tuning flights stay unlogged.
 
 import { clampShape } from "./editor.js";
 import { SHAPE_LIMITS, defaultShape, derivePlane } from "./plane.js";

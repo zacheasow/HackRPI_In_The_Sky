@@ -10,6 +10,6 @@ function perMinute(limit) {
   });
 }
 
-// Mount these on /api/coach and /api/designs when those routes exist.
 export const coachLimiter = perMinute(10);
 export const designsLimiter = perMinute(30);
+export const flightsLimiter = perMinute(30);

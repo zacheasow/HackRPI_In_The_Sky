@@ -5,8 +5,8 @@ import { fileURLToPath } from "url";
 import { prepareEntry, publicEntry, readLimit } from "./board.js";
 import { getCollection, ping } from "./db.js";
 import { askCoach } from "./coach.js";
-import { coachLimiter, designsLimiter } from "./limits.js";
-import { status as telemetryStatus } from "./tiger.js";
+import { coachLimiter, designsLimiter, flightsLimiter } from "./limits.js";
+import { saveFlight, status as telemetryStatus } from "./tiger.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const { version } = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8"));
@@ -38,11 +38,85 @@ function designId(value) {
   return /^[0-9a-f]{24}$/i.test(text) ? text.toLowerCase() : null;
 }
 
+const FLIGHT_FIELDS = ["t", "x", "y", "vx", "vy", "speed", "theta", "alpha", "cl", "cd", "lift", "drag", "stalled"];
+const FLIGHT_UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+function cleanLabel(value) {
+  const stripped = String(value ?? "")
+    .replace(/<[^>]*>/g, "")
+    .replace(/[<>]/g, "")
+    .trim();
+  if (!stripped || stripped.length > 24) return stripped ? undefined : null;
+  return stripped;
+}
+
+function finiteOrNull(value) {
+  if (value == null) return null;
+  return typeof value === "number" && Number.isFinite(value) ? value : undefined;
+}
+
+function readSamples(samples) {
+  if (!samples || typeof samples !== "object" || Array.isArray(samples)) return undefined;
+  const length = Array.isArray(samples.t) ? samples.t.length : -1;
+  if (length < 0 || length > 5000) return undefined;
+  const columns = {};
+  for (const key of FLIGHT_FIELDS) {
+    const values = samples[key];
+    if (!Array.isArray(values) || values.length !== length) return undefined;
+    const clean = [];
+    for (const value of values) {
+      if (key === "stalled") {
+        if (value == null) clean.push(null);
+        else if (typeof value === "boolean") clean.push(value);
+        else return undefined;
+        continue;
+      }
+      const next = key === "t" && value == null ? undefined : finiteOrNull(value);
+      if (next === undefined) return undefined;
+      clean.push(next);
+    }
+    columns[key] = clean;
+  }
+  return columns;
+}
+
+function readFlight(body) {
+  if (!body || typeof body !== "object" || Array.isArray(body)) return { error: "Bad request" };
+  const flight_id = typeof body.flight_id === "string" ? body.flight_id.trim().toLowerCase() : "";
+  if (!FLIGHT_UUID.test(flight_id)) return { error: "Bad request" };
+  const label = cleanLabel(body.label);
+  if (label === undefined) return { error: "Bad request" };
+  const summary = body.summary && typeof body.summary === "object" ? body.summary : null;
+  if (!summary) return { error: "Bad request" };
+  const distance = finiteOrNull(summary.distance);
+  const flight_time = finiteOrNull(summary.flight_time);
+  const max_height = finiteOrNull(summary.max_height);
+  const end_reason = cleanLabel(summary.end_reason);
+  if (distance === undefined || flight_time === undefined || max_height === undefined || end_reason === undefined) {
+    return { error: "Bad request" };
+  }
+  const samples = readSamples(body.samples);
+  if (!samples) return { error: "Bad request" };
+  const params = body.params && typeof body.params === "object" && !Array.isArray(body.params) ? body.params : null;
+  return {
+    flight_id,
+    design_id: designId(body.design_id),
+    label,
+    summary: { distance, flight_time, max_height, end_reason },
+    params,
+    samples,
+  };
+}
+
 export function createApp(options = {}) {
   const app = express();
   app.disable("x-powered-by");
   app.set("trust proxy", 1);
-  app.use(express.json({ limit: "16kb" }));
+  const jsonSmall = express.json({ limit: "16kb" });
+  app.use((req, res, next) => {
+    if (req.method === "POST" && req.path === "/api/flights") return next();
+    jsonSmall(req, res, next);
+  });
   app.use(express.static(path.join(__dirname, "..", "public")));
 
   async function openScores() {
@@ -110,6 +184,16 @@ export function createApp(options = {}) {
       console.error("Leaderboard database unavailable");
       res.status(503).json({ ok: false });
     }
+  }));
+
+  app.post("/api/flights", express.json({ limit: "512kb" }), flightsLimiter, asyncRoute(async (req, res) => {
+    const flight = readFlight(req.body);
+    if (flight.error) {
+      res.status(400).json({ ok: false, error: "Bad request" });
+      return;
+    }
+    const saved = await saveFlight(flight);
+    res.json({ flight_id: saved.flight_id });
   }));
 
   app.get("/api/leaderboard", asyncRoute(async (req, res) => {
