@@ -375,6 +375,7 @@ export class FlightView {
       wind: { mode: "off", steady: 0, phases: [0, 0, 0, 0] },
       ghost: Array.isArray(options.ghost) ? options.ghost : null,
     };
+    this.compareFrame = null;
     this.redraw();
   }
 
@@ -454,12 +455,11 @@ export class FlightView {
     const height = this.canvas.height;
     const pose = sampleAt(this.scene.samples, this.scene.time) || this.scene.samples[0];
     const ghostPose = this.scene.ghost ? sampleAt(this.scene.ghost, this.scene.time) : null;
-    const aim = ghostPose && pose
-      ? { x: (pose.x + ghostPose.x) / 2, y: Math.max(pose.y, ghostPose.y) }
-      : pose;
     const bounds = this.ambient
       ? { minX: this.viewX ?? -1.5, maxX: (this.viewX ?? -1.5) + 9, maxY: this.viewY ?? 3.55 }
-      : this.followBounds(aim);
+      : ghostPose && pose
+        ? this.compareFrameFor(pose, ghostPose)
+        : this.followBounds(pose);
     const driftTime = this.reduced.matches ? 0 : this.scene.time || 0;
 
     ctx.clearRect(0, 0, width, height);
@@ -479,6 +479,31 @@ export class FlightView {
     if (pose && this.planeVisible) this.drawPlane(ctx, camera, pose, this.scene.bodyLength);
     if (ghostPose && this.planeVisible) this.drawPlane(ctx, camera, ghostPose, this.scene.bodyLength);
     if (!this.ambient) this.drawCaption(ctx, width, pose ? pose.x : 0, this.scene.live, velocity.x);
+  }
+
+  // shortcut: compare zoom stays between a 9 m and 80 m window, widen the max if flights separate further.
+  compareFrameFor(a, b) {
+    const pad = 1.5;
+    const low = Math.min(a.x, b.x);
+    const high = Math.max(a.x, b.x);
+    const span = Math.min(80, Math.max(9, high - low + pad * 2));
+    const center = (low + high) / 2;
+    const target = {
+      minX: center - span / 2,
+      maxX: center + span / 2,
+      maxY: Math.max(3.4, a.y + 1.15, b.y + 1.15),
+    };
+    if (!this.compareFrame || this.reduced.matches) {
+      this.compareFrame = target;
+      return this.compareFrame;
+    }
+    const ease = 0.08;
+    this.compareFrame = {
+      minX: this.compareFrame.minX + (target.minX - this.compareFrame.minX) * ease,
+      maxX: this.compareFrame.maxX + (target.maxX - this.compareFrame.maxX) * ease,
+      maxY: this.compareFrame.maxY + (target.maxY - this.compareFrame.maxY) * ease,
+    };
+    return this.compareFrame;
   }
 
   followBounds(pose) {

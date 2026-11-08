@@ -1,8 +1,8 @@
 const TIMEOUT_MS = 8000;
 
-async function request(path, options) {
+async function request(path, options, timeout = TIMEOUT_MS) {
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
+  const timer = setTimeout(() => controller.abort(), timeout);
   try {
     const response = await fetch(path, { ...options, signal: controller.signal });
     if (!response.ok) return null;
@@ -23,7 +23,7 @@ export function coach(body) {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify(body),
-  });
+  }, 35000);
 }
 
 export function designs(body) {

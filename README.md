@@ -43,7 +43,7 @@ Copy `.env.example` to `.env`. Leave a value blank to skip that feature. Do not 
 | Variable | Purpose |
 | --- | --- |
 | `GEMINI_API_KEY` | Server-side key for the Gemini flight coach. Blank skips the coach. |
-| `GEMINI_MODEL` | Gemini model name. Defaults to `gemini-2.5-flash`. |
+| `GEMINI_MODEL` | Gemini model name. Defaults to `gemini-3.5-flash`. |
 | `MONGODB_URI` | MongoDB connection string for the shared leaderboard. Blank keeps scores in the browser. |
 | `MONGODB_DB` | Database name. Defaults to `HackRPI`. |
 | `MONGODB_COLLECTION` | Collection name. Defaults to `hackrpi`. |

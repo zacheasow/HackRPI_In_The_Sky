@@ -124,6 +124,26 @@ try {
   });
   assert(telemetryCompare.status === 200 && seen.comparison.divergeAt === 1.2, "telemetry comparison is accepted");
   assert(seen.params.b.noseWeight === other.params.noseWeight, "both shapes reach the coach");
+
+  const stored = await post(base, {
+    params: {
+      a: {
+        span: 0.36, rootChord: 0.07, tipChord: 0.04, sweepDeg: 5, tailArea: 0.006, noseWeight: 1, speed: 4, angleDeg: 3,
+      },
+      b: {
+        span: 0.2, rootChord: 0.12, tipChord: 0.03, sweepDeg: 20, tailArea: 0.006, noseWeight: 4, speed: 9, angleDeg: 12,
+      },
+    },
+    comparison: {
+      distanceDiff: 3.02,
+      timeDiff: 3.63,
+      maxHeightDiff: -0.49,
+      firstStall: { a: null, b: null },
+      peakSpeed: { a: 3.98, b: 8.9 },
+      divergeAt: 0.11,
+    },
+  });
+  assert(stored.status === 200 && seen.params.a.span === 0.36 && seen.params.b.speed === 9, "stored flight params pass coach validation");
 } finally {
   await new Promise((resolve) => server.close(resolve));
 }

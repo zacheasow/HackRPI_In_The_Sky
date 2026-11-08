@@ -3,7 +3,7 @@ import { CONFIG } from "../public/physics.js";
 import { SHAPE_LIMITS } from "../public/plane.js";
 
 export const COACH_PARAMS = ["span", "rootChord", "tipChord", "sweepDeg", "tailArea", "noseWeight"];
-const TIMEOUT_MS = 10000;
+const TIMEOUT_MS = 30000;
 
 const PARAM_KEYS = [...COACH_PARAMS, "speed", "angleDeg"];
 const DERIVED_KEYS = ["wingArea", "aspectRatio", "mass", "cg", "ac", "staticMargin", "meanChord", "tailArm"];
@@ -292,7 +292,7 @@ function responseSchema() {
 async function callGemini(brief) {
   const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
   const response = await ai.models.generateContent({
-    model: process.env.GEMINI_MODEL || "gemini-2.5-flash",
+    model: process.env.GEMINI_MODEL || "gemini-3.5-flash",
     contents: JSON.stringify(brief),
     config: {
       systemInstruction: SYSTEM,
