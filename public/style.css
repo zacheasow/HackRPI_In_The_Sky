@@ -45,6 +45,27 @@ body {
   overflow: hidden;
 }
 
+.fly-page {
+  position: relative;
+  z-index: 1;
+  background: transparent;
+}
+
+.fly-sky {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  display: block;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
+.fly-page > :not(.fly-sky) {
+  position: relative;
+  z-index: 1;
+}
+
 .top {
   max-width: 1180px;
   margin: 0 auto var(--space-3);
@@ -61,8 +82,7 @@ body {
   text-decoration: none;
 }
 
-body.board .nav a,
-body.home .nav a {
+body.board .nav a {
   color: var(--ink);
 }
 
@@ -102,8 +122,17 @@ main {
   display: flex;
   flex-direction: column;
   min-height: 0;
-  background: var(--card);
+  background: linear-gradient(
+    165deg,
+    rgba(255, 255, 255, 0.42) 0%,
+    rgba(251, 248, 242, 0.32) 55%,
+    rgba(255, 255, 255, 0.22) 100%
+  );
+  border: 1px solid rgba(255, 255, 255, 0.4);
   border-radius: var(--radius-m);
+  backdrop-filter: blur(14px) saturate(1.15);
+  -webkit-backdrop-filter: blur(14px) saturate(1.15);
+  box-shadow: 0 8px 28px rgba(36, 48, 39, 0.1);
 }
 
 .control-body {
@@ -284,14 +313,24 @@ button.text:hover {
   min-height: 240px;
   border-radius: var(--radius-m);
   background: var(--sky-mid);
+  box-shadow: 0 8px 28px rgba(36, 48, 39, 0.12);
 }
 
 .report {
-  background: var(--card);
+  background: linear-gradient(
+    165deg,
+    rgba(255, 255, 255, 0.42) 0%,
+    rgba(251, 248, 242, 0.32) 55%,
+    rgba(255, 255, 255, 0.22) 100%
+  );
+  border: 1px solid rgba(255, 255, 255, 0.4);
   border-radius: var(--radius-m);
   padding: var(--space-2);
   min-height: 0;
   overflow: auto;
+  backdrop-filter: blur(14px) saturate(1.15);
+  -webkit-backdrop-filter: blur(14px) saturate(1.15);
+  box-shadow: 0 8px 28px rgba(36, 48, 39, 0.1);
 }
 
 .tabs {
@@ -490,49 +529,182 @@ body.board {
 }
 
 body.board h1,
-body.board .lede,
-body.home h1,
-body.home .lede {
+body.board .lede {
   color: var(--ink);
 }
 
-body.board .page,
-body.home .page {
+body.board .page {
   height: auto;
   overflow: visible;
   min-height: 100vh;
 }
 
-body.home {
-  background: var(--paper);
-  color: var(--ink);
+body.home,
+body.entering-fly {
+  background: var(--sky-top);
+  color: #f7f4ee;
+  overflow: hidden;
+  height: 100vh;
 }
 
-/* Landing */
-body.home main {
+/* Scope home layout/styles to home-content so they never scramble the Fly page. */
+body.home .page.home-content,
+.sky-panel--home .page.home-content {
+  position: relative;
+  z-index: 1;
+  height: 100vh;
+  max-height: 100vh;
+  overflow: hidden;
+  padding: 10px var(--space-3) 12px;
+  pointer-events: none;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-start;
+  gap: 10px;
+}
+
+body.home .page.home-content a,
+body.home .page.home-content button,
+.sky-panel--home .page.home-content a,
+.sky-panel--home .page.home-content button {
+  pointer-events: auto;
+}
+
+body.home .home-top,
+.sky-panel--home .home-top {
+  max-width: 960px;
+  width: 100%;
+  margin: 0 auto;
+  flex-shrink: 0;
+  pointer-events: auto;
+  display: flex;
+  justify-content: center;
+}
+
+body.home .home-top .nav,
+.sky-panel--home .home-top .nav {
+  margin: 0;
+  gap: 14px;
+  justify-content: center;
+}
+
+/* Shared dark outline so home copy stays readable on sky/mountains. */
+body.home .page.home-content :is(h1, h2, h3, p, a, span, .eyebrow, .lede, .note, .stat-row),
+.sky-panel--home .page.home-content :is(h1, h2, h3, p, a, span, .eyebrow, .lede, .note, .stat-row) {
+  -webkit-text-stroke: 1px rgba(36, 48, 39, 0.78);
+  paint-order: stroke fill;
+  text-shadow:
+    0 0 2px rgba(36, 48, 39, 0.85),
+    1px 0 0 rgba(36, 48, 39, 0.7),
+    -1px 0 0 rgba(36, 48, 39, 0.7),
+    0 1px 0 rgba(36, 48, 39, 0.7),
+    0 -1px 0 rgba(36, 48, 39, 0.7),
+    1px 1px 0 rgba(36, 48, 39, 0.45),
+    -1px -1px 0 rgba(36, 48, 39, 0.45);
+}
+
+body.home .page.home-content .nav a,
+.sky-panel--home .page.home-content .nav a {
+  color: #f7f4ee;
+}
+
+body.home .page.home-content h1,
+.sky-panel--home .page.home-content h1 {
+  margin: 0;
+  font-size: clamp(3rem, 7.5vw, 4.6rem);
+  line-height: 1.05;
+  color: #f7f4ee;
+  -webkit-text-stroke: 1.6px rgba(36, 48, 39, 0.82);
+}
+
+body.home .page.home-content .lede,
+.sky-panel--home .page.home-content .lede {
+  margin-top: 10px;
+  font-size: 1.15rem;
+  line-height: 1.4;
+  color: rgba(247, 244, 238, 0.98);
+}
+
+.home-sky {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
   display: block;
-  max-width: 1180px;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
+/* Landing — must not target Fly's <main> grid */
+body.home .page.home-content main,
+.sky-panel--home .page.home-content main {
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-start;
+  flex: 1;
+  min-height: 0;
+  max-width: 960px;
+  width: 100%;
+  margin: 0 auto;
+  pointer-events: none;
+  gap: 8px;
 }
 
 .hero {
   display: grid;
-  grid-template-columns: minmax(260px, 0.85fr) minmax(0, 1.15fr);
-  gap: var(--space-3);
-  align-items: center;
+  grid-template-columns: minmax(280px, 40rem);
+  gap: var(--space-2);
+  align-items: start;
+  min-height: 0;
+  padding-top: 0;
+  flex-shrink: 0;
+}
+
+.hero-copy {
+  pointer-events: auto;
+  box-sizing: border-box;
+  min-height: 0;
+  padding: 14px 18px;
+  border-radius: var(--radius-m);
+  background: linear-gradient(
+    165deg,
+    rgba(255, 255, 255, 0.28) 0%,
+    rgba(190, 220, 235, 0.18) 55%,
+    rgba(255, 255, 255, 0.12) 100%
+  );
+  border: 1px solid rgba(255, 255, 255, 0.35);
+  backdrop-filter: blur(14px) saturate(1.15);
+  -webkit-backdrop-filter: blur(14px) saturate(1.15);
+  box-shadow: 0 8px 28px rgba(36, 48, 39, 0.1);
+}
+
+.home-sky-lane {
+  flex: 0 0 auto;
+  height: clamp(9rem, 28vh, 16rem);
+  min-height: 9rem;
+  pointer-events: none;
+}
+
+.eyebrow {
+  margin: 0;
+  font-size: 0.85rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: rgba(247, 244, 238, 0.9);
 }
 
 .landing-actions {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: var(--space-2);
-  margin: var(--space-3) 0 0;
+  gap: 12px;
+  margin: 10px 0 0;
 }
 
 a.start {
   display: inline-block;
   border-radius: var(--radius-s);
-  padding: 10px 18px;
+  padding: 8px 14px;
   background: var(--accent);
   color: #fffaf6;
   font-weight: 600;
@@ -544,95 +716,204 @@ a.start:hover {
 }
 
 a.secondary {
-  color: var(--ink);
+  color: #f7f4ee;
   font-weight: 600;
 }
 
 .stat-row {
-  margin-top: var(--space-2);
-}
-
-.preview {
-  margin: 0;
-}
-
-.preview #flight {
-  flex: none;
-  height: 300px;
-  min-height: 220px;
-}
-
-.preview figcaption {
-  margin: var(--space-1) 0 0;
-  color: var(--ink-soft);
-  font-size: var(--label);
+  margin-top: var(--space-1);
+  color: rgba(247, 244, 238, 0.85);
 }
 
 .how {
-  margin-top: var(--space-4);
+  margin-top: 0;
+  pointer-events: auto;
+  flex-shrink: 0;
 }
 
 .how h2 {
-  margin: 0 0 var(--space-2);
-  font-size: var(--section);
+  margin: 0 0 8px;
+  font-size: 1.15rem;
   font-weight: 600;
+  color: #f7f4ee;
 }
 
 .how-grid {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
-  gap: var(--space-2);
+  gap: 16px;
 }
 
 .how-card {
-  background: var(--card);
-  border-radius: var(--radius-m);
-  padding: var(--space-2);
+  background: transparent;
+  color: #f7f4ee;
+  border-radius: 0;
+  padding: 4px 2px;
+  box-shadow: none;
 }
 
 .how-card svg {
   display: block;
-  width: 28px;
-  height: 28px;
-  margin-bottom: var(--space-1);
+  width: 24px;
+  height: 24px;
+  margin-bottom: 6px;
   color: var(--accent);
+  filter: drop-shadow(0 1px 2px rgba(36, 48, 39, 0.45));
 }
 
 .how-card h3 {
   margin: 0;
-  font-size: var(--body);
+  font-size: 1.35rem;
   font-weight: 600;
 }
 
 .how-card p {
-  margin: var(--space-1) 0 0;
-  color: var(--ink-soft);
+  margin: 6px 0 0;
+  color: rgba(247, 244, 238, 0.92);
+  font-size: 1.1rem;
+  line-height: 1.35;
 }
 
-.site-foot {
-  max-width: 1180px;
+body.home .page.home-content .site-foot,
+.sky-panel--home .page.home-content .site-foot {
+  max-width: 960px;
   width: 100%;
-  margin: var(--space-4) auto 0;
-  padding-top: var(--space-2);
-  border-top: 1px solid var(--line);
-  color: var(--ink-soft);
+  margin: auto auto 0;
+  padding-top: 8px;
+  border-top: 1px solid rgba(247, 244, 238, 0.28);
+  color: rgba(247, 244, 238, 0.9);
   display: flex;
   flex-wrap: wrap;
-  gap: var(--space-1) var(--space-3);
+  gap: 6px var(--space-3);
+  pointer-events: auto;
+  flex-shrink: 0;
 }
 
-.site-foot a {
-  color: var(--ink);
+body.home .page.home-content .site-foot a,
+.sky-panel--home .page.home-content .site-foot a {
+  color: #f7f4ee;
+}
+
+body.home .page.home-content a.start,
+.sky-panel--home .page.home-content a.start {
+  -webkit-text-stroke: 0.8px rgba(36, 48, 39, 0.55);
+}
+
+/* Home → Fly transition shell — sky stays put; only UI panels slide */
+.sky-enter {
+  position: fixed;
+  inset: 0;
+  overflow: hidden;
+  background: var(--sky-top);
+}
+
+.sky-stay {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  display: block;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
+.sky-panel {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  background: transparent;
+  transform: translate3d(0, 0, 0);
+  will-change: transform;
+  backface-visibility: hidden;
+}
+
+body.entering-fly .sky-panel {
+  contain: layout paint;
+}
+
+.sky-panel--home {
+  z-index: 1;
+}
+
+.sky-panel--sim {
+  z-index: 2;
+  background: transparent;
+  overflow: hidden;
+}
+
+.sky-panel--sim .page {
+  height: 100%;
+  max-height: 100%;
+  overflow: hidden;
+}
+
+/* While measuring the destination, park it on-screen but invisible without breaking layout. */
+.sky-panel.is-measuring {
+  visibility: hidden;
+  pointer-events: none;
+  z-index: 0;
+}
+
+.sky-bridge-plane {
+  position: fixed;
+  left: 0;
+  top: 0;
+  z-index: 5;
+  pointer-events: none;
+  transform-origin: center center;
+  will-change: transform;
+  backface-visibility: hidden;
+}
+
+body.entering-fly {
+  overflow: hidden;
 }
 
 @media (max-width: 860px) {
+  body.home .page.home-content {
+    padding: var(--space-2);
+  }
+
   .hero,
   .how-grid {
     grid-template-columns: 1fr;
   }
 
-  .preview #flight {
-    height: 240px;
+  .how-grid {
+    grid-template-columns: repeat(3, 1fr);
+    gap: 6px;
+  }
+
+  .how-card p {
+    display: none;
+  }
+
+  .hero-copy {
+    padding: var(--space-2);
+  }
+
+  body.home .page.home-content h1,
+  .sky-panel--home .page.home-content h1 {
+    font-size: clamp(2.1rem, 9vw, 3.2rem);
+  }
+
+  .how-card h3 {
+    font-size: 1rem;
+  }
+
+  .how-card p {
+    font-size: 0.9rem;
+  }
+}
+
+@media (max-width: 520px) {
+  .how-grid {
+    grid-template-columns: 1fr 1fr 1fr;
+  }
+
+  .how-card h3 {
+    font-size: 0.92rem;
   }
 }
 

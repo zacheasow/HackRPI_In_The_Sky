@@ -7,7 +7,8 @@
     <link rel="stylesheet" href="style.css" />
   </head>
   <body>
-    <div class="page">
+    <div class="page fly-page">
+      <canvas id="fly-sky" class="fly-sky" width="960" height="640" aria-hidden="true"></canvas>
       <header class="top">
         <nav class="nav">
           <a href="/">Home</a>
@@ -119,6 +120,11 @@
         </section>
       </main>
     </div>
-    <script type="module" src="main.js"></script>
+    <script type="module">
+      import { bindReturnHome } from "./enter.js";
+      import { bootSim } from "./main.js";
+      const { view } = bootSim();
+      bindReturnHome(view);
+    </script>
   </body>
 </html>

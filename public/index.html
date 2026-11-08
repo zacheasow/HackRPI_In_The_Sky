@@ -7,30 +7,29 @@
     <link rel="stylesheet" href="style.css" />
   </head>
   <body class="home">
-    <div class="page">
-      <header class="top">
+    <canvas id="home-sky" class="home-sky" width="960" height="640" aria-hidden="true"></canvas>
+    <div class="page home-content">
+      <header class="top home-top">
         <nav class="nav">
           <a href="/" aria-current="page">Home</a>
-          <a href="/sim.html">Fly</a>
+          <a href="/sim.html" data-enter-fly>Fly</a>
           <a href="/leaderboard.html">Leaderboard</a>
         </nav>
       </header>
       <main>
         <section class="hero">
-          <div>
+          <div class="hero-copy">
+            <p class="eyebrow">Into the sky</p>
             <h1>In the Clouds</h1>
             <p class="lede">Design a paper airplane and throw it through seeded wind. The sim shows how far it flew, and why.</p>
             <p class="landing-actions">
-              <a class="start" href="/sim.html">Start flying</a>
+              <a class="start" href="/sim.html" data-enter-fly>Start flying</a>
               <a class="secondary" href="/leaderboard.html">View leaderboard</a>
             </p>
             <p id="top-flight" class="note stat-row" hidden></p>
           </div>
-          <figure class="preview">
-            <canvas id="flight" width="960" height="640">Side view of the default glider</canvas>
-            <figcaption id="preview-caption">Default glider, 12.39 m</figcaption>
-          </figure>
         </section>
+        <div class="home-sky-lane" aria-hidden="true"></div>
         <section class="how" aria-labelledby="how-title">
           <h2 id="how-title">How it works</h2>
           <div class="how-grid">
