@@ -8,6 +8,17 @@ import { CONFIG, resolveWind, simulate } from "./physics.js";
 import { initReplay } from "./replay.js";
 import { FlightView } from "./render.js";
 
+
+// crypto.randomUUID only exists on HTTPS or localhost; build a v4 uuid from getRandomValues elsewhere.
+function newFlightId() {
+  if (globalThis.crypto && typeof crypto.randomUUID === "function") return crypto.randomUUID();
+  const b = crypto.getRandomValues(new Uint8Array(16));
+  b[6] = (b[6] & 0x0f) | 0x40;
+  b[8] = (b[8] & 0x3f) | 0x80;
+  const h = [...b].map((x) => x.toString(16).padStart(2, "0")).join("");
+  return `${h.slice(0, 8)}-${h.slice(8, 12)}-${h.slice(12, 16)}-${h.slice(16, 20)}-${h.slice(20)}`;
+}
+
 const SHAPE_FIELDS = [
   { key: "span", label: "Wing span", unit: "cm", scale: 100, step: 0.5, digits: 1 },
   { key: "rootChord", label: "Root chord", unit: "cm", scale: 100, step: 0.1, digits: 1 },
@@ -600,7 +611,7 @@ export function bootSim(options = {}) {
     const postedDesign = designId;
     const result = simulate(plane, savedLaunch, readWind(), { recorder: tape.recorder });
     postFlight({
-      flight_id: crypto.randomUUID(),
+      flight_id: newFlightId(),
       label: `${result.distance.toFixed(2)} m`,
       design_id: postedDesign,
       summary: {
