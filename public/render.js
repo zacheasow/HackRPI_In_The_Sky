@@ -357,6 +357,34 @@ export class FlightView {
     return Math.max(260, cssW * 0.44);
   }
 
+  showSamples(samples, time, options = {}) {
+    this.stop();
+    this.ambient = false;
+    this.viewX = null;
+    this.viewY = null;
+    const rows = Array.isArray(samples) ? samples : [];
+    const last = rows.length ? Number(rows[rows.length - 1].t) : 0;
+    const duration = Math.max(Number.isFinite(options.duration) ? options.duration : last, 0.01);
+    this.scene = {
+      samples: rows,
+      time: Math.min(duration, Math.max(0, time || 0)),
+      duration,
+      distance: options.distance || 0,
+      bodyLength: options.bodyLength || 0.22,
+      live: false,
+      wind: { mode: "off", steady: 0, phases: [0, 0, 0, 0] },
+      ghost: Array.isArray(options.ghost) ? options.ghost : null,
+    };
+    this.redraw();
+  }
+
+  seek(time) {
+    if (!this.scene || this.ambient) return;
+    const duration = this.scene.duration || 0.01;
+    this.scene.time = Math.min(duration, Math.max(0, Number(time) || 0));
+    this.redraw();
+  }
+
   play(result, onProgress) {
     this.stop();
     this.viewX = null;
@@ -425,9 +453,13 @@ export class FlightView {
     const width = this.canvas.width;
     const height = this.canvas.height;
     const pose = sampleAt(this.scene.samples, this.scene.time) || this.scene.samples[0];
+    const ghostPose = this.scene.ghost ? sampleAt(this.scene.ghost, this.scene.time) : null;
+    const aim = ghostPose && pose
+      ? { x: (pose.x + ghostPose.x) / 2, y: Math.max(pose.y, ghostPose.y) }
+      : pose;
     const bounds = this.ambient
       ? { minX: this.viewX ?? -1.5, maxX: (this.viewX ?? -1.5) + 9, maxY: this.viewY ?? 3.55 }
-      : this.followBounds(pose);
+      : this.followBounds(aim);
     const driftTime = this.reduced.matches ? 0 : this.scene.time || 0;
 
     ctx.clearRect(0, 0, width, height);
@@ -440,8 +472,12 @@ export class FlightView {
     if (!this.ambient) this.drawWindStreaks(ctx, width, height, velocity, driftTime);
     if (this.ambient) this.drawMountainFloor(ctx, width, height);
     else this.drawGround(ctx, camera, bounds, driftTime);
-    if (!this.ambient) this.drawTrail(ctx, camera, this.scene.samples, this.scene.time);
+    if (this.scene.ghost) {
+      this.drawColoredTrail(ctx, camera, this.scene.samples, this.scene.time, "#2c6cb0");
+      this.drawColoredTrail(ctx, camera, this.scene.ghost, this.scene.time, "#d2652d");
+    } else if (!this.ambient) this.drawTrail(ctx, camera, this.scene.samples, this.scene.time);
     if (pose && this.planeVisible) this.drawPlane(ctx, camera, pose, this.scene.bodyLength);
+    if (ghostPose && this.planeVisible) this.drawPlane(ctx, camera, ghostPose, this.scene.bodyLength);
     if (!this.ambient) this.drawCaption(ctx, width, pose ? pose.x : 0, this.scene.live, velocity.x);
   }
 
@@ -809,6 +845,20 @@ export class FlightView {
         ctx.fill();
       }
     }
+    ctx.restore();
+  }
+
+  drawColoredTrail(ctx, camera, samples, time, color) {
+    const visible = samples.filter((sample) => sample.t <= time + 1e-6 && sample.y >= -0.05);
+    if (visible.length < 2) return;
+    ctx.save();
+    ctx.strokeStyle = color;
+    ctx.lineCap = "round";
+    ctx.lineWidth = Math.max(1.5, 2 * this.dpr);
+    ctx.beginPath();
+    ctx.moveTo(camera.toX(visible[0].x), camera.toY(visible[0].y));
+    for (let i = 1; i < visible.length; i += 1) ctx.lineTo(camera.toX(visible[i].x), camera.toY(visible[i].y));
+    ctx.stroke();
     ctx.restore();
   }
 

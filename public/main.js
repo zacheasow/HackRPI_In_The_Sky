@@ -5,6 +5,7 @@ import { diagnose } from "./diagnosis.js";
 import { clampShape, initEditor } from "./editor.js";
 import { SHAPE_LIMITS, defaultLaunch, defaultPlane, defaultShape, derivePlane } from "./plane.js";
 import { CONFIG, resolveWind, simulate } from "./physics.js";
+import { initReplay } from "./replay.js";
 import { FlightView } from "./render.js";
 
 const SHAPE_FIELDS = [
@@ -374,7 +375,7 @@ export function bootSim(options = {}) {
       button.setAttribute("aria-selected", String(on));
       button.tabIndex = on ? 0 : -1;
     });
-    for (const id of ["results", "history", "coach"]) {
+    for (const id of ["results", "history", "coach", "flights"]) {
       const panel = document.querySelector(`#tab-${id}`);
       if (panel) panel.hidden = id !== name;
     }
@@ -561,8 +562,37 @@ export function bootSim(options = {}) {
     submitNote.textContent = "Saved locally";
   });
 
+  function askCompare(body) {
+    const ticket = ++coachTicket;
+    coachBase = null;
+    coachSuggestions = [];
+    if (coachApply) coachApply.hidden = true;
+    if (coachUndo) coachUndo.hidden = true;
+    if (coachList) coachList.replaceChildren();
+    if (coachExplanation) coachExplanation.textContent = "";
+    if (coachStatus) {
+      coachStatus.hidden = false;
+      coachStatus.textContent = "thinking…";
+    }
+    selectTab("coach");
+    coach(body).then((reply) => {
+      if (ticket !== coachTicket) return;
+      if (coachStatus) {
+        coachStatus.hidden = true;
+        coachStatus.textContent = "";
+      }
+      if (!reply?.ok || typeof reply.explanation !== "string") return;
+      coachExplanation.textContent = reply.explanation;
+      coachSuggestions = Array.isArray(reply.suggestions) ? reply.suggestions : [];
+      renderCoachSuggestions();
+    });
+  }
+
+  const replay = initReplay(view, { askCompare });
+
   document.querySelector("#launch").addEventListener("click", () => {
     stopTune();
+    replay.stop();
     const savedShape = { ...readShape() };
     const savedLaunch = readLaunch();
     const plane = derivePlane(savedShape);
@@ -581,7 +611,7 @@ export function bootSim(options = {}) {
       },
       params: { ...savedShape, speed: savedLaunch.speed, angleDeg: savedLaunch.angleDeg },
       samples: tape.samples(),
-    });
+    }).then(() => replay.refresh());
     const note = diagnose(result, plane, savedLaunch);
     playing = true;
     distanceOut.textContent = `${result.distance.toFixed(2)} m`;
@@ -599,6 +629,7 @@ export function bootSim(options = {}) {
 
   document.querySelector("#reset").addEventListener("click", () => {
     playing = false;
+    replay.stop();
     shape = { ...defaultShape() };
     speedInput.value = String(launchDefaults.speed);
     angleInput.value = String(launchDefaults.angleDeg);

@@ -312,6 +312,138 @@ function columnsFromRows(rows) {
   return out;
 }
 
+function finite(value) {
+  const n = Number(value);
+  return Number.isFinite(n) ? n : null;
+}
+
+function firstStall(samples) {
+  const times = samples?.t || [];
+  const stalled = samples?.stalled || [];
+  for (let index = 0; index < times.length; index += 1) {
+    if (stalled[index] === true && Number.isFinite(Number(times[index]))) return Number(times[index]);
+  }
+  return null;
+}
+
+function peakOf(samples) {
+  let peak = 0;
+  for (const value of samples?.speed || []) {
+    const speed = Number(value);
+    if (Number.isFinite(speed) && speed > peak) peak = speed;
+  }
+  return peak;
+}
+
+function columnAt(samples, time, key) {
+  const times = samples?.t || [];
+  const values = samples?.[key] || [];
+  if (!times.length) return null;
+  if (time <= Number(times[0])) return finite(values[0]);
+  const last = times.length - 1;
+  if (time >= Number(times[last])) return finite(values[last]);
+  let lo = 0;
+  let hi = last;
+  while (lo < hi) {
+    const mid = (lo + hi) >> 1;
+    if (Number(times[mid]) < time) lo = mid + 1;
+    else hi = mid;
+  }
+  const span = Number(times[lo]) - Number(times[lo - 1]) || 1;
+  const mix = (time - Number(times[lo - 1])) / span;
+  const left = finite(values[lo - 1]);
+  const right = finite(values[lo]);
+  if (left == null || right == null) return left ?? right;
+  return left + (right - left) * mix;
+}
+
+function divergeAt(left, right, step) {
+  const a = left?.t || [];
+  const b = right?.t || [];
+  if (!a.length || !b.length) return null;
+  const start = Math.max(Number(a[0]), Number(b[0]));
+  const end = Math.min(Number(a[a.length - 1]), Number(b[b.length - 1]));
+  if (!(end >= start)) return null;
+  const dt = Math.min(1, Math.max(0.01, step));
+  const steps = Math.floor((end - start) / dt + 1e-9);
+  for (let index = 0; index <= steps; index += 1) {
+    const t = Math.min(end, start + index * dt);
+    const ax = columnAt(left, t, "x");
+    const ay = columnAt(left, t, "y");
+    const bx = columnAt(right, t, "x");
+    const by = columnAt(right, t, "y");
+    if ([ax, ay, bx, by].every((value) => value != null) && Math.hypot(ax - bx, ay - by) > 0.5) {
+      return Math.round(t * 1e6) / 1e6;
+    }
+  }
+  return null;
+}
+
+export function compareSeries(left, right, resolution) {
+  const step = clampResolution(resolution);
+  const a = left?.summary || {};
+  const b = right?.summary || {};
+  return {
+    distanceDiff: (finite(a.distance) ?? 0) - (finite(b.distance) ?? 0),
+    timeDiff: (finite(a.flight_time) ?? 0) - (finite(b.flight_time) ?? 0),
+    maxHeightDiff: (finite(a.max_height) ?? 0) - (finite(b.max_height) ?? 0),
+    firstStall: { a: firstStall(left?.samples), b: firstStall(right?.samples) },
+    peakSpeed: { a: peakOf(left?.samples), b: peakOf(right?.samples) },
+    divergeAt: divergeAt(left?.samples, right?.samples, step),
+  };
+}
+
+async function loadFlight(flightId, resolution) {
+  const step = clampResolution(resolution);
+  if (mode !== "tiger" || !pool) {
+    const flight = localFlights.find((item) => item.flight_id === flightId);
+    if (!flight) return null;
+    return {
+      label: flight.label ?? null,
+      params: flight.params ?? null,
+      summary: flight.summary || {},
+      samples: downsample(flight.samples, flight.created_at, step),
+    };
+  }
+  try {
+    const found = await pool.query(
+      "SELECT label, params, distance, flight_time, max_height FROM flights WHERE flight_id = $1",
+      [flightId]
+    );
+    if (!found.rows.length) return null;
+    const row = found.rows[0];
+    const samples = await getTelemetry(flightId, step);
+    if (!samples) return null;
+    return {
+      label: row.label ?? null,
+      params: row.params ?? null,
+      summary: {
+        distance: row.distance,
+        flight_time: row.flight_time,
+        max_height: row.max_height,
+      },
+      samples,
+    };
+  } catch {
+    useLocal("unavailable");
+    return null;
+  }
+}
+
+export async function compareFlights(aId, bId, resolution) {
+  const step = clampResolution(resolution);
+  const left = await loadFlight(aId, step);
+  const right = await loadFlight(bId, step);
+  if (!left || !right) return null;
+  return {
+    a: left.samples,
+    b: right.samples,
+    labels: { a: left.label, b: right.label },
+    params: { a: left.params, b: right.params },
+    comparison: compareSeries(left, right, step),
+  };
+}
+
 export async function getTelemetry(flightId, resolution) {
   const step = clampResolution(resolution);
   if (mode !== "tiger" || !pool) {

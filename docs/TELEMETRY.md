@@ -109,9 +109,9 @@ tests/telemetry.js: local-mode backend (no network). Covers validation and caps,
 
 ## Stages
 
-1. server/tiger.js (storage interface, both backends, schema, health), `pg` dependency, .env.example, seed script skeleton.
-2. Recorder in physics.js + public/telemetry.js + POST /api/flights.
-3. GET routes with downsampling (SQL + local).
-4. Flights tab + single-flight Replay + charts.
-5. Compare view + /api/compare.
-6. Coach comparison button, README section (TIGERDATA_URI, how to create a Tiger Cloud service), final polish.
+1. server/tiger.js (storage interface, both backends, schema, health), `pg` dependency, .env.example, seed script skeleton. (done)
+2. Recorder in physics.js + public/telemetry.js + POST /api/flights. (done)
+3. GET routes with downsampling (SQL + local). (done)
+4. Flights tab + single-flight Replay + charts. (done)
+5. Compare view + /api/compare. (done)
+6. Coach comparison button, README section (TIGERDATA_URI, how to create a Tiger Cloud service), final polish. (done)

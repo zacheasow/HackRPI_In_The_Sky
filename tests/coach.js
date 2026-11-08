@@ -110,6 +110,20 @@ try {
   const other = flight({ ...shape, noseWeight: 4 }, { ...launch, speed: 7, angleDeg: 4 });
   const compared = await post(base, { ...body, comparison: { a: body, b: other } });
   assert(compared.status === 200 && seen.comparison.a.params.noseWeight !== seen.comparison.b.params.noseWeight, "comparison is accepted");
+
+  const telemetryCompare = await post(base, {
+    params: { a: body.params, b: other.params },
+    comparison: {
+      distanceDiff: 3.02,
+      timeDiff: 0.4,
+      maxHeightDiff: 0.2,
+      firstStall: { a: null, b: 0.8 },
+      peakSpeed: { a: 6.2, b: 5.1 },
+      divergeAt: 1.2,
+    },
+  });
+  assert(telemetryCompare.status === 200 && seen.comparison.divergeAt === 1.2, "telemetry comparison is accepted");
+  assert(seen.params.b.noseWeight === other.params.noseWeight, "both shapes reach the coach");
 } finally {
   await new Promise((resolve) => server.close(resolve));
 }

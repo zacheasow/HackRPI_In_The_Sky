@@ -6,7 +6,7 @@ import { prepareEntry, publicEntry, readLimit } from "./board.js";
 import { getCollection, ping } from "./db.js";
 import { askCoach } from "./coach.js";
 import { coachLimiter, designsLimiter, flightsLimiter } from "./limits.js";
-import { saveFlight, status as telemetryStatus } from "./tiger.js";
+import { compareFlights, getTelemetry, listFlights, saveFlight, status as telemetryStatus } from "./tiger.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const { version } = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8"));
@@ -186,6 +186,25 @@ export function createApp(options = {}) {
     }
   }));
 
+  app.get("/api/flights", asyncRoute(async (req, res) => {
+    const flights = await listFlights(req.query.limit);
+    res.json({ flights });
+  }));
+
+  app.get("/api/flights/:id/telemetry", asyncRoute(async (req, res) => {
+    const flightId = String(req.params.id || "").trim().toLowerCase();
+    if (!FLIGHT_UUID.test(flightId)) {
+      res.status(400).json({ error: "Bad request" });
+      return;
+    }
+    const series = await getTelemetry(flightId, req.query.resolution);
+    if (!series) {
+      res.status(404).json({ error: "Not found" });
+      return;
+    }
+    res.json(series);
+  }));
+
   app.post("/api/flights", express.json({ limit: "512kb" }), flightsLimiter, asyncRoute(async (req, res) => {
     const flight = readFlight(req.body);
     if (flight.error) {
@@ -194,6 +213,21 @@ export function createApp(options = {}) {
     }
     const saved = await saveFlight(flight);
     res.json({ flight_id: saved.flight_id });
+  }));
+
+  app.get("/api/compare", asyncRoute(async (req, res) => {
+    const a = String(req.query.a || "").trim().toLowerCase();
+    const b = String(req.query.b || "").trim().toLowerCase();
+    if (!FLIGHT_UUID.test(a) || !FLIGHT_UUID.test(b)) {
+      res.status(400).json({ error: "Bad request" });
+      return;
+    }
+    const compared = await compareFlights(a, b, req.query.resolution);
+    if (!compared) {
+      res.status(404).json({ error: "Not found" });
+      return;
+    }
+    res.json(compared);
   }));
 
   app.get("/api/leaderboard", asyncRoute(async (req, res) => {

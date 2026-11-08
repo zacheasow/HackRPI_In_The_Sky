@@ -12,10 +12,11 @@ You can drag the wing and tail, read the stability numbers, ask a Gemini coach f
 - Gemini coach that explains a flight and can apply numeric changes
 - Auto-tune that searches for a longer flight inside the editor limits
 - MongoDB leaderboard, with a local fallback
+- Flight telemetry in Tiger Cloud, with replay and compare
 
 ## Tech stack
 
-Plain HTML, CSS, and JavaScript in the browser. Node.js and Express serve the pages and the API. The coach uses the Gemini API. The leaderboard uses MongoDB. Production is a Vultr VPS with pm2 and nginx.
+Plain HTML, CSS, and JavaScript in the browser. Node.js and Express serve the pages and the API. The coach uses the Gemini API. The leaderboard uses MongoDB. Flight telemetry uses Tiger Cloud (Postgres and TimescaleDB). Production is a Vultr VPS with pm2 and nginx.
 
 ## Local setup
 
@@ -47,6 +48,26 @@ Copy `.env.example` to `.env`. Leave a value blank to skip that feature. Do not 
 | `MONGODB_DB` | Database name. Defaults to `HackRPI`. |
 | `MONGODB_COLLECTION` | Collection name. Defaults to `hackrpi`. |
 | `PORT` | Port Express listens on. Defaults to `3000`. |
+| `TIGERDATA_URI` | Tiger Cloud connection string for flight telemetry. Blank keeps the last 20 flights in server memory. |
+
+## Telemetry
+
+A manual launch stores one row per flight and a sample every 0.01 s: position, speed, pitch, angle of attack, lift, drag, and whether the wing had stalled. The Flights tab lists those flights, replays one, and compares two. Auto-tune and the home-page preview are not recorded.
+
+`TIGERDATA_URI` is the server-only connection string. Leave it blank and the API keeps working, but the flights stay in memory for that process and the page shows "telemetry: local mode".
+
+To use Tiger Cloud:
+
+1. Create a service at [console.cloud.timescale.com](https://console.cloud.timescale.com/).
+2. Open the service and copy its connection string.
+3. Paste that string into `TIGERDATA_URI` in `.env` on the server. Do not commit it.
+4. Load five sample flights:
+
+```bash
+npm run seed
+```
+
+The script prints `tiger` and one line per flight. If the database is unreachable it prints that it is in local mode and saves nothing.
 
 ## Deploy to Vultr
 
@@ -116,6 +137,8 @@ The app is same-origin. Express serves the pages and the API. Do not open CORS f
 - `public/plane.js` — shape, mass, CG, and static margin
 - `public/editor.js` — drag handles
 - `public/main.js` — flight page wiring
+- `public/replay.js` — flight list, replay, and compare
+- `server/tiger.js` — Tiger Cloud telemetry
 - `public/autotune.js` — shape search
 - `public/render.js` — canvas sky and flight view
 - `server/index.js` — process entry

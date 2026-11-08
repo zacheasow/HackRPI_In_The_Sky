@@ -2,7 +2,7 @@ import { CONFIG, simulate } from "../public/physics.js";
 import { defaultLaunch, defaultPlane } from "../public/plane.js";
 import { createRecorder } from "../public/telemetry.js";
 import { createApp } from "../server/app.js";
-import { initTelemetry, listFlights, saveFlight, status } from "../server/tiger.js";
+import { compareSeries, getTelemetry, initTelemetry, listFlights, saveFlight, status } from "../server/tiger.js";
 
 function assert(condition, message) {
   if (!condition) {
@@ -10,6 +10,23 @@ function assert(condition, message) {
     process.exitCode = 1;
   }
 }
+
+const samePath = {
+  summary: { distance: 10, flight_time: 2, max_height: 3 },
+  samples: { t: [0, 2], x: [0, 0], y: [0, 0], speed: [1, 1], stalled: [false, false] },
+};
+const pulledAway = {
+  summary: { distance: 7, flight_time: 1.5, max_height: 2 },
+  samples: { t: [0, 2], x: [0, 2], y: [0, 0], speed: [4, 4], stalled: [false, true] },
+};
+const comparison = compareSeries(samePath, pulledAway, 0.5);
+assert(comparison.distanceDiff === 3, "distance diff");
+assert(comparison.timeDiff === 0.5, "time diff");
+assert(comparison.maxHeightDiff === 1, "height diff");
+assert(comparison.firstStall.a === null && comparison.firstStall.b === 2, "first stall");
+assert(comparison.peakSpeed.a === 1 && comparison.peakSpeed.b === 4, "peak speed");
+assert(comparison.divergeAt === 1, `divergence at ${comparison.divergeAt}`);
+assert(compareSeries(samePath, samePath, 0.5).divergeAt === null, "paths that stay together do not diverge");
 
 const plane = defaultPlane();
 const launch = defaultLaunch();
@@ -129,6 +146,58 @@ try {
   const after = await listFlights(20);
   assert(after.some((flight) => flight.flight_id === payload.flight_id), "accepted flight is listed");
   assert(!after.some((flight) => flight.flight_id === badUuid.flight_id), "rejected flight is not listed");
+
+  const bucketId = crypto.randomUUID();
+  await saveFlight({
+    flight_id: bucketId,
+    label: "buckets",
+    created_at: "2020-01-01T00:00:00.000Z",
+    summary: { distance: 1, flight_time: 0.09, max_height: 1, end_reason: "ground" },
+    samples: {
+      t: [0, 0.02, 0.04, 0.05, 0.09],
+      x: [0, 2, 4, 10, 20],
+      y: [1, 1, 1, 1, 1],
+      stalled: [false, true, false, false, true],
+    },
+  });
+  const buckets = await getTelemetry(bucketId, 0.05);
+  assert(buckets.t.length === 2, "0.05 s buckets");
+  assert(Math.abs(buckets.t[0] - 0.02) < 1e-9 && Math.abs(buckets.x[0] - 2) < 1e-9, "first bucket average");
+  assert(Math.abs(buckets.t[1] - 0.07) < 1e-9 && Math.abs(buckets.x[1] - 15) < 1e-9, "second bucket average");
+  assert(buckets.stalled[0] === true && buckets.stalled[1] === true, "stalled is true if any sample in the bucket stalled");
+  for (const key of columns) assert(buckets[key].length === buckets.t.length, `bucket column ${key}`);
+
+  const listed = await fetch(`${base}/api/flights?limit=20`);
+  const listBody = await listed.json();
+  assert(listed.status === 200 && listBody.flights.some((flight) => flight.flight_id === bucketId), "list route returns the flight");
+  assert(!("samples" in listBody.flights[0]), "list route omits samples");
+
+  const tele = await fetch(`${base}/api/flights/${bucketId}/telemetry?resolution=0.05`);
+  const teleBody = await tele.json();
+  assert(tele.status === 200 && teleBody.x[0] === buckets.x[0] && teleBody.t.length === 2, "telemetry route matches the bucket rule");
+
+  const badTele = await fetch(`${base}/api/flights/not-a-uuid/telemetry`);
+  assert(badTele.status === 400, "bad telemetry uuid");
+  const missingTele = await fetch(`${base}/api/flights/00000000-0000-0000-0000-000000000000/telemetry`);
+  assert(missingTele.status === 404, "unknown telemetry id");
+
+  const otherId = crypto.randomUUID();
+  await saveFlight({
+    flight_id: otherId,
+    label: "other",
+    created_at: "2020-01-01T00:00:00.000Z",
+    summary: { distance: 4, flight_time: 0.09, max_height: 1, end_reason: "ground" },
+    params: { span: 0.2, rootChord: 0.07, tipChord: 0.04, sweepDeg: 5, tailArea: 0.006, noseWeight: 1, speed: 4, angleDeg: 3 },
+    samples: { t: [0, 0.09], x: [0, 3], y: [1, 1], stalled: [true, true], speed: [2, 2] },
+  });
+  const compared = await fetch(`${base}/api/compare?a=${bucketId}&b=${otherId}&resolution=0.05`);
+  const comparedBody = await compared.json();
+  assert(compared.status === 200 && comparedBody.comparison.distanceDiff === -3, "compare route returns the diff");
+  assert(comparedBody.a.t.length === comparedBody.a.x.length && comparedBody.b.t.length === comparedBody.b.x.length, "compare series are columnar");
+  const badCompare = await fetch(`${base}/api/compare?a=nope&b=${bucketId}`);
+  assert(badCompare.status === 400, "compare rejects a bad uuid");
+  const missingCompare = await fetch(`${base}/api/compare?a=${bucketId}&b=00000000-0000-0000-0000-000000000000`);
+  assert(missingCompare.status === 404, "compare misses an unknown id");
 } finally {
   await new Promise((resolve) => server.close(resolve));
 }

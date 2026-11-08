@@ -190,7 +190,47 @@ function readFlight(value) {
   return { params, derived, result, wind, diagnosis };
 }
 
+function readOptionalTime(value) {
+  if (value == null) return null;
+  return readNumber(value, [0, CONFIG.maxFlightTime]);
+}
+
+function readCompareStats(value) {
+  if (!onlyKeys(value, ["distanceDiff", "timeDiff", "maxHeightDiff", "firstStall", "peakSpeed", "divergeAt"])) return null;
+  const distanceDiff = readNumber(value.distanceDiff, [-CONFIG.maxRange, CONFIG.maxRange]);
+  const timeDiff = readNumber(value.timeDiff, [-CONFIG.maxFlightTime, CONFIG.maxFlightTime]);
+  const maxHeightDiff = readNumber(value.maxHeightDiff, [-CONFIG.maxAltitude, CONFIG.maxAltitude]);
+  const stall = value.firstStall;
+  const peak = value.peakSpeed;
+  if (distanceDiff == null || timeDiff == null || maxHeightDiff == null || !stall || !peak) return null;
+  if (!onlyKeys(stall, ["a", "b"]) || !onlyKeys(peak, ["a", "b"])) return null;
+  const stallA = readOptionalTime(stall.a);
+  const stallB = readOptionalTime(stall.b);
+  if ((stall.a != null && stallA == null) || (stall.b != null && stallB == null)) return null;
+  const peakA = readNumber(peak.a, [0, 80]);
+  const peakB = readNumber(peak.b, [0, 80]);
+  if (peakA == null || peakB == null) return null;
+  const divergeAt = readOptionalTime(value.divergeAt);
+  if (value.divergeAt != null && divergeAt == null) return null;
+  return {
+    distanceDiff,
+    timeDiff,
+    maxHeightDiff,
+    firstStall: { a: stallA, b: stallB },
+    peakSpeed: { a: peakA, b: peakB },
+    divergeAt,
+  };
+}
+
 export function prepareCoach(body) {
+  if (body && body.params && body.params.a && body.params.b && body.comparison && !("result" in body)) {
+    if (!onlyKeys(body, ["params", "comparison"]) || !onlyKeys(body.params, ["a", "b"])) return bad();
+    const a = readParams(body.params.a);
+    const b = readParams(body.params.b);
+    const comparison = readCompareStats(body.comparison);
+    if (!a || !b || !comparison) return bad();
+    return { brief: { params: { a, b }, comparison }, suggestFor: comparison.distanceDiff >= 0 ? b : a };
+  }
   if (!onlyKeys(body, TOP_KEYS)) return bad();
   for (const key of FLIGHT_KEYS) {
     if (!(key in body)) return bad();
@@ -286,7 +326,7 @@ export async function askCoach(body, client) {
   if (!client && !process.env.GEMINI_API_KEY) return { unavailable: true };
   try {
     const raw = client ? await withTimeout(client(prepared.brief), TIMEOUT_MS) : await callGemini(prepared.brief);
-    const output = clampCoachOutput(raw, prepared.brief.params);
+    const output = clampCoachOutput(raw, prepared.suggestFor || prepared.brief.params);
     if (!output) return { unavailable: true };
     return { ok: true, ...output };
   } catch {

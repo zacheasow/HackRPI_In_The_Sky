@@ -38,6 +38,18 @@ export function leaderboard(limit = 20) {
   return request(`/api/leaderboard?limit=${limit}`);
 }
 
+export function listFlights(limit = 20) {
+  return request(`/api/flights?limit=${limit}`);
+}
+
+export function flightTelemetry(id, resolution = 0.05) {
+  return request(`/api/flights/${encodeURIComponent(id)}/telemetry?resolution=${resolution}`);
+}
+
+export function compareFlights(a, b, resolution = 0.05) {
+  return request(`/api/compare?a=${encodeURIComponent(a)}&b=${encodeURIComponent(b)}&resolution=${resolution}`);
+}
+
 const LOCAL_BOARD = "clouds.board";
 
 export function readLocalBoard() {
