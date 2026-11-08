@@ -1,8 +1,5 @@
 import { leaderboard, readLocalBoard } from "./api.js";
-
-const rows = document.querySelector("#board-rows");
-const note = document.querySelector("#board-note");
-const empty = document.querySelector("#board-empty");
+import { bindSoftLeaderboardNav, startIdleAudio, unlockAudioOnGesture } from "./audio.js";
 
 function when(value) {
   const date = new Date(value);
@@ -10,7 +7,7 @@ function when(value) {
   return date.toLocaleString(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
 }
 
-function render(entries) {
+function render(entries, rows, empty) {
   rows.replaceChildren(...entries.slice(0, 50).map((entry, index) => {
     const row = document.createElement("tr");
     if (index < 3) row.className = "top";
@@ -33,15 +30,31 @@ function render(entries) {
   rows.parentElement.hidden = none;
 }
 
-async function load() {
+async function load(rows, empty, note) {
   note.textContent = "This browser only";
-  render(readLocalBoard());
+  render(readLocalBoard(), rows, empty);
   const remote = await leaderboard(20);
   if (remote?.ok && remote.entries.length > 0) {
     note.textContent = "The farthest throws.";
-    render(remote.entries);
+    render(remote.entries, rows, empty);
   }
 }
 
-document.querySelector("#board-refresh").addEventListener("click", load);
-load();
+export function bootLeaderboard() {
+  const rows = document.querySelector("#board-rows");
+  const note = document.querySelector("#board-note");
+  const empty = document.querySelector("#board-empty");
+  const refresh = document.querySelector("#board-refresh");
+  if (!rows || !note || !empty || !refresh) return;
+
+  startIdleAudio();
+  unlockAudioOnGesture();
+  bindSoftLeaderboardNav();
+
+  refresh.onclick = () => load(rows, empty, note);
+  void load(rows, empty, note);
+}
+
+if (document.body.classList.contains("board")) {
+  bootLeaderboard();
+}

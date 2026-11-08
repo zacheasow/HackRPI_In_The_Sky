@@ -1,4 +1,5 @@
 import { leaderboard } from "./api.js";
+import { bindSoftLeaderboardNav, startIdleAudio, unlockAudioOnGesture } from "./audio.js";
 import { bindEnterFly } from "./enter.js";
 import { defaultPlane } from "./plane.js";
 import { FlightView } from "./render.js";
@@ -94,6 +95,9 @@ export function bootHome(options = {}) {
   });
 
   bindEnterFly(homeView);
+  startIdleAudio();
+  unlockAudioOnGesture();
+  bindSoftLeaderboardNav();
   void fillTopFlight();
   return { view: homeView };
 }

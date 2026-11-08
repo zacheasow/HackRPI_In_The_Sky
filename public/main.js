@@ -7,7 +7,7 @@ import { SHAPE_LIMITS, defaultLaunch, defaultPlane, defaultShape, derivePlane } 
 import { CONFIG, resolveWind, simulate } from "./physics.js";
 import { initReplay } from "./replay.js";
 import { FlightView } from "./render.js";
-
+import { bindSoftLeaderboardNav, playPlop, startFlightAudio, startIdleAudio, unlockAudioOnGesture } from "./audio.js";
 
 // crypto.randomUUID only exists on HTTPS or localhost; build a v4 uuid from getRandomValues elsewhere.
 function newFlightId() {
@@ -37,6 +37,7 @@ let tuneTimer = 0;
 export function resetSimBoot() {
   tuneAlive += 1;
   clearTimeout(tuneTimer);
+  startIdleAudio();
   if (view) {
     try {
       view.dispose();
@@ -604,6 +605,7 @@ export function bootSim(options = {}) {
   document.querySelector("#launch").addEventListener("click", () => {
     stopTune();
     replay.stop();
+    startFlightAudio();
     const savedShape = { ...readShape() };
     const savedLaunch = readLaunch();
     const plane = derivePlane(savedShape);
@@ -633,14 +635,23 @@ export function bootSim(options = {}) {
     askCoach(savedShape, savedLaunch, plane, result, note);
     remember(result, note, savedShape, savedLaunch);
     offerSubmit(result, savedShape, savedLaunch, readWind());
+    let landed = false;
     view.play(result, (progress) => {
-      if (progress >= 1) playing = false;
+      if (progress >= 1) {
+        playing = false;
+        if (!landed) {
+          landed = true;
+          playPlop();
+          startIdleAudio();
+        }
+      }
     });
   });
 
   document.querySelector("#reset").addEventListener("click", () => {
     playing = false;
     replay.stop();
+    startIdleAudio();
     shape = { ...defaultShape() };
     speedInput.value = String(launchDefaults.speed);
     angleInput.value = String(launchDefaults.angleDeg);
@@ -666,6 +677,7 @@ export function bootSim(options = {}) {
     const flight = history[Number(button.dataset.load)];
     if (!flight) return;
     playing = false;
+    startIdleAudio();
     shape = clampShape(flight.shape);
     speedInput.value = String(flight.launch.speed);
     angleInput.value = String(flight.launch.angleDeg);
@@ -815,6 +827,10 @@ export function bootSim(options = {}) {
   showHistory();
   view.resize();
   if (options.planeVisible === false) view.setPlaneVisible(false);
+
+  startIdleAudio();
+  unlockAudioOnGesture(() => playing);
+  bindSoftLeaderboardNav();
 
   const services = { coach: false, db: false };
   getHealth().then((health) => {
